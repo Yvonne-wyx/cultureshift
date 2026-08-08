@@ -1,0 +1,33 @@
+# CultureShift
+
+CultureShift is a Cross-Cultural Creative Reasoning Studio for adapting static advertising concepts across cultural contexts while preserving verified brand truth.
+
+## Status
+
+CultureShift is in the planning and repository-bootstrap stage. It is not yet a production service and does not claim automated cultural validation.
+
+## MVP scope
+
+The MVP focuses on static ads for AI software and AI apps in two directions: China → UK and UK → China. Brand Lock preserves the logo, product name, verified product facts, real UI, benefit order, CTA action meaning, and layout template. Only narrative, use scenario, trust information, and language are localizable. Every cultural recommendation is a hypothesis, not a fact, and requires validation through appropriate research and human review.
+
+Politics, medical, financial, gambling, tobacco, and child-targeted advertising are excluded.
+
+## Architecture direction
+
+The intended system separates upload and extraction, brand-locked representation, hypothesis-led cultural reasoning, creative generation, and human review. Privacy and public-boundary checks are applied throughout.
+
+## Validation disclaimer
+
+Outputs require human review and appropriate local research. CultureShift supports reasoning and creative exploration; it does not certify cultural correctness, legal compliance, or campaign performance.
+
+## License boundary
+
+Original source code is MIT licensed. Documentation, brand materials, and project-created non-code assets are not covered by that license unless explicitly stated. See [LICENSE_SCOPE.md](LICENSE_SCOPE.md).
+
+## Repository check
+
+On Windows, run the public-boundary verification without changing the machine execution policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-public-boundary.ps1
+```

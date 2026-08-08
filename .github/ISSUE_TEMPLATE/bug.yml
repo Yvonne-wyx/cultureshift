@@ -1,0 +1,41 @@
+name: Bug
+description: Report a reproducible defect without sensitive data
+title: "[Bug]: "
+labels: []
+body:
+  - type: textarea
+    id: goal
+    attributes: { label: Goal }
+    validations: { required: true }
+  - type: textarea
+    id: scope
+    attributes: { label: Scope, description: Include observed and expected behavior. }
+    validations: { required: true }
+  - type: textarea
+    id: non_goals
+    attributes: { label: Non-goals }
+    validations: { required: true }
+  - type: input
+    id: owner
+    attributes: { label: Owner }
+    validations: { required: true }
+  - type: textarea
+    id: dependencies
+    attributes: { label: Dependencies }
+  - type: textarea
+    id: files
+    attributes: { label: Files }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }
+    validations: { required: true }
+  - type: textarea
+    id: verification
+    attributes: { label: Verification, description: Provide safe reproduction steps and planned regression tests. }
+    validations: { required: true }
+  - type: textarea
+    id: evidence
+    attributes: { label: Evidence, description: Remove secrets, personal data, and private materials. }
+  - type: textarea
+    id: risks
+    attributes: { label: Risks }

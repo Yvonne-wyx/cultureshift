@@ -1,0 +1,54 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# JavaScript dependencies and caches
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Logs and coverage
+*.log
+logs/
+coverage/
+.coverage
+
+# User content and generated output
+uploads/
+outputs/
+tmp/
+temp/
+generated/
+generated-assets/
+artifacts/
+model-artifacts/
+models/
+
+# Local data and private evidence
+*.db
+*.sqlite
+*.sqlite3
+private/
+evidence/
+.superpowers/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

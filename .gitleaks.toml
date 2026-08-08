@@ -1,0 +1,4 @@
+title = "CultureShift repository secret scanning"
+
+[extend]
+useDefault = true
