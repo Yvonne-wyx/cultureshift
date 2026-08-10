@@ -1,0 +1,25 @@
+{
+  "manifest_version": 1,
+  "assets": [
+    {
+      "id": "synthetic-ai-app-static-ad-001",
+      "asset_type": "static_advertising_creative",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Project-created metadata-only example; no binary creative is included."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": [
+        "repository_test",
+        "public_demo"
+      ],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Synthetic contract record only. It makes no cultural or performance claim."
+    }
+  ]
+}
