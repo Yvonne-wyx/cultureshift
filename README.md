@@ -31,3 +31,19 @@ On Windows, run the public-boundary verification without changing the machine ex
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-public-boundary.ps1
 ```
+
+## Backend development
+
+Install the package with development dependencies, then run the API locally:
+
+```powershell
+python -m pip install -e ".[dev]"
+python -m uvicorn cultureshift.app:app --host 127.0.0.1 --port 8000
+```
+
+The readiness endpoint is `GET /health`. Run automated checks with:
+
+```powershell
+python -m pytest
+python -m ruff check .
+```

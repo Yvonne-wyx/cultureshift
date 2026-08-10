@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPOSITORY_ROOT / "scripts" / "validate_demo_manifest.py"
 
@@ -76,7 +75,9 @@ class DemoManifestValidatorTests(unittest.TestCase):
     def test_rejects_unsupported_rights_status(self):
         asset = valid_asset()
         asset["rights_status"] = "probably_allowed"
-        self.assert_rejected({"manifest_version": 1, "assets": [asset]}, "unsupported rights status")
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "unsupported rights status"
+        )
 
     def test_rejects_unknown_derivative_work_permission(self):
         asset = valid_asset()

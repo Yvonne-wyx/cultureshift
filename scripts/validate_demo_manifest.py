@@ -4,7 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-
 SUPPORTED_RIGHTS_STATUSES = {"cleared", "restricted", "prohibited"}
 EXPLICIT_PERMISSIONS = {"permitted", "prohibited"}
 
