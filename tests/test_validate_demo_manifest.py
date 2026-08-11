@@ -13,6 +13,8 @@ def valid_asset():
     return {
         "id": "synthetic-ai-app-static-ad-001",
         "asset_type": "static_advertising_creative",
+        "asset_path": "apps/web/public/fixtures/orbit-ai/orbit-ai-logo.svg",
+        "sha256": "eb119b7f99219bfbcd228e9cc6456662c596b21a24b871026499751f1905839e",
         "provenance": {
             "source_class": "synthetic_example",
             "description": "Project-created metadata-only example.",
@@ -54,6 +56,53 @@ class DemoManifestValidatorTests(unittest.TestCase):
         asset = valid_asset()
         del asset["id"]
         self.assert_rejected({"manifest_version": 1, "assets": [asset]}, "missing asset id")
+
+    def test_rejects_missing_asset_path(self):
+        asset = valid_asset()
+        del asset["asset_path"]
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "missing asset path"
+        )
+
+    def test_rejects_absolute_or_traversing_asset_path(self):
+        for asset_path in (
+            "/apps/web/public/fixtures/orbit-ai/orbit-ai-logo.svg",
+            "apps/web/public/fixtures/../orbit-ai/orbit-ai-logo.svg",
+        ):
+            with self.subTest(asset_path=asset_path):
+                asset = valid_asset()
+                asset["asset_path"] = asset_path
+                self.assert_rejected(
+                    {"manifest_version": 1, "assets": [asset]}, "asset path must be safe"
+                )
+
+    def test_rejects_non_fixture_public_path(self):
+        asset = valid_asset()
+        asset["asset_path"] = "apps/web/public/logo.svg"
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "asset path must be safe"
+        )
+
+    def test_rejects_invalid_sha256(self):
+        asset = valid_asset()
+        asset["sha256"] = "A" * 64
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "sha256 must be lowercase"
+        )
+
+    def test_rejects_safe_missing_asset_file(self):
+        asset = valid_asset()
+        asset["asset_path"] = "apps/web/public/fixtures/orbit-ai/missing-source.svg"
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "asset file is missing"
+        )
+
+    def test_rejects_wrong_digest_for_existing_asset(self):
+        asset = valid_asset()
+        asset["sha256"] = "f" * 64
+        self.assert_rejected(
+            {"manifest_version": 1, "assets": [asset]}, "asset sha256 does not match"
+        )
 
     def test_rejects_duplicate_asset_id(self):
         asset = valid_asset()

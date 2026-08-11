@@ -2,24 +2,80 @@
   "manifest_version": 1,
   "assets": [
     {
-      "id": "synthetic-ai-app-static-ad-001",
-      "asset_type": "static_advertising_creative",
+      "id": "orbit-ai-logo-001",
+      "asset_type": "logo",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/orbit-ai-logo.svg",
+      "sha256": "eb119b7f99219bfbcd228e9cc6456662c596b21a24b871026499751f1905839e",
       "provenance": {
         "source_class": "synthetic_example",
-        "description": "Project-created metadata-only example; no binary creative is included."
+        "description": "Project-created fictional Orbit AI orbital logo."
       },
       "creator_owner_status": "project_created",
       "rights_status": "cleared",
-      "permitted_project_use": [
-        "repository_test",
-        "public_demo"
-      ],
+      "permitted_project_use": ["repository_test", "public_demo"],
       "derivative_work_permission": "permitted",
       "public_display_permission": "permitted",
       "attribution_required": false,
       "attribution_text": null,
       "evidence_reference": "demo/assets/RIGHTS.md",
-      "notes": "Synthetic contract record only. It makes no cultural or performance claim."
+      "notes": "Synthetic fixture asset; no real brand or third-party creative is included."
+    },
+    {
+      "id": "orbit-ai-product-ui-001",
+      "asset_type": "product_ui_reference",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/orbit-ai-product-ui.svg",
+      "sha256": "7e71a7b127768a8911c79ee94bf4f96730ee3a6be355a3fc2b63c030b1cbd545",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Project-created non-functional Orbit AI task-summary panel."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Synthetic fixture asset; no live or provider behavior is represented."
+    },
+    {
+      "id": "orbit-ai-source-zh-cn-001",
+      "asset_type": "source_advertising_creative",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/source-zh-cn.svg",
+      "sha256": "58c22343c4cc16ee3ba25bdeed5c897dce442426d9b500a7a2704edeac3ccc39",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Project-created synthetic zh-CN source ad for the fictional Orbit AI product."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Synthetic fixture asset; it makes no cultural or performance claim."
+    },
+    {
+      "id": "orbit-ai-source-en-gb-001",
+      "asset_type": "source_advertising_creative",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/source-en-gb.svg",
+      "sha256": "f85f732a435126690b2908508597cc800e7b99fc07b98c9a035bddd0b9091d68",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Project-created synthetic en-GB source ad for the fictional Orbit AI product."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Synthetic fixture asset; it makes no cultural or performance claim."
     }
   ]
 }

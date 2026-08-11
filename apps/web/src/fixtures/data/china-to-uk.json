@@ -1,0 +1,71 @@
+{
+  "fixture_id": "china-to-uk",
+  "disclosure": "Fixture Demo / 非实时模型",
+  "source_locale": "zh-CN",
+  "target_locale": "en-GB",
+  "request": {
+    "direction": "china_to_uk",
+    "execution_mode": "fixture",
+    "source_asset": {
+      "asset_id": "b1111111-1111-4111-8111-111111111111",
+      "kind": "source_ad",
+      "media_type": "image/svg+xml",
+      "sha256": "58c22343c4cc16ee3ba25bdeed5c897dce442426d9b500a7a2704edeac3ccc39",
+      "provenance_ref": "fixture:orbit-ai-source-zh-cn-001",
+      "rights_ref": "rights:demo-assets-manifest"
+    },
+    "brand_lock": {
+      "logo_asset_id": "a1111111-1111-4111-8111-111111111111",
+      "product_name": "Orbit AI",
+      "verified_product_facts": ["Turns approved notes into task summaries"],
+      "product_ui_asset_ids": ["a2222222-2222-4222-8222-222222222222"],
+      "benefit_order": ["Summarize", "Organize"],
+      "cta_action_meaning": "Start a fixture demo",
+      "layout_template_asset_id": "a3333333-3333-4333-8333-333333333333",
+      "localizable_fields": ["narrative", "use_scenario", "trust_information", "language"]
+    },
+    "product_category": "ai_software",
+    "creative_format": "static_ad"
+  },
+  "preview": {
+    "source_asset_path": "/fixtures/orbit-ai/source-zh-cn.svg",
+    "logo_asset_path": "/fixtures/orbit-ai/orbit-ai-logo.svg",
+    "product_ui_asset_path": "/fixtures/orbit-ai/orbit-ai-product-ui.svg",
+    "source_copy": {
+      "headline": "把已批准笔记整理成任务摘要",
+      "body": "Orbit AI 将已批准的会议笔记转成清晰的任务摘要。"
+    },
+    "localized_copy": {
+      "locale": "en-GB",
+      "headline": "Turn approved notes into clear task summaries",
+      "body": "Orbit AI helps teams organise approved meeting notes into task summaries.",
+      "cta_label": "Try the fixture demo",
+      "cta_action_meaning": "Start a fixture demo"
+    },
+    "brand_lock": {
+      "logo_asset_id": "a1111111-1111-4111-8111-111111111111",
+      "product_name": "Orbit AI",
+      "verified_product_facts": ["Turns approved notes into task summaries"],
+      "product_ui_asset_ids": ["a2222222-2222-4222-8222-222222222222"],
+      "benefit_order": ["Summarize", "Organize"],
+      "cta_action_meaning": "Start a fixture demo",
+      "layout_template_asset_id": "a3333333-3333-4333-8333-333333333333",
+      "localizable_fields": ["narrative", "use_scenario", "trust_information", "language"]
+    },
+    "rule_ids": ["ZEU-S1", "ZEU-S3"],
+    "hypotheses": [
+      {
+        "hypothesis_id": "c1111111-1111-4111-8111-111111111111",
+        "target_market": "united_kingdom",
+        "claim": "A concise task-focused framing may be useful to test with the intended UK audience.",
+        "evidence_refs": ["evidence:day3-zeu-h1"],
+        "uncertainty": "high",
+        "rationale": "This is a directional drafting hypothesis, not a cultural finding.",
+        "validation_requirements": ["Review with an accountable UK market reviewer before use."],
+        "review_status": "pending"
+      }
+    ],
+    "warnings": ["HUMAN_REVIEW_REQUIRED"],
+    "limitation": "This proposal is not cultural, legal, or performance validation."
+  }
+}

@@ -33,7 +33,11 @@ function Find-ContentViolations {
     param([Parameter(Mandatory)][string]$Content)
     $findings = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in $contentPatterns.GetEnumerator()) {
-        if ($Content -match $entry.Value) { $findings.Add($entry.Key) }
+        $scanContent = $Content
+        if ($entry.Key -eq 'Phone-like value') {
+            $scanContent = $Content -replace '(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b', ' '
+        }
+        if ($scanContent -match $entry.Value) { $findings.Add($entry.Key) }
     }
     return @($findings)
 }
@@ -44,6 +48,8 @@ function Invoke-ScannerSelfTest {
         @{ Name = 'fake secret'; Content = ('api_key=' + 'synthetic_token_123456'); Expected = 1 }
         @{ Name = 'fake personal email'; Content = ('person' + '@example.invalid'); Expected = 1 }
         @{ Name = 'fake absolute local path'; Content = ('C:' + '\Users\Example\Documents\notes.txt'); Expected = 1 }
+        @{ Name = 'synthetic RFC4122 UUID'; Content = '11111111-1111-4111-8111-111111111111'; Expected = 0 }
+        @{ Name = 'fake phone number'; Content = ('Call ' + '555' + '-123-4567'); Expected = 1 }
     )
     foreach ($case in $cases) {
         $actual = @(Find-ContentViolations -Content $case.Content).Count

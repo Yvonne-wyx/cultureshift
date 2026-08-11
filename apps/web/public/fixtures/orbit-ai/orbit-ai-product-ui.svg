@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title">
+  <title id="title">Orbit AI task summary panel</title>
+  <rect width="960" height="600" fill="#e2e8f0"/>
+  <rect x="100" y="64" width="760" height="472" rx="20" fill="#ffffff"/>
+  <rect x="100" y="64" width="760" height="74" rx="20" fill="#0f172a"/>
+  <circle cx="144" cy="101" r="16" fill="#60a5fa"/>
+  <text x="178" y="110" fill="#f8fafc" font-family="Arial, sans-serif" font-size="28" font-weight="700">Orbit AI · Task summary</text>
+  <text x="150" y="192" fill="#334155" font-family="Arial, sans-serif" font-size="30" font-weight="700">Today’s focus</text>
+  <rect x="150" y="222" width="660" height="86" rx="14" fill="#eff6ff"/>
+  <circle cx="187" cy="265" r="14" fill="#2563eb"/>
+  <text x="220" y="276" fill="#1e3a8a" font-family="Arial, sans-serif" font-size="24">Draft a clear project update</text>
+  <rect x="150" y="332" width="660" height="86" rx="14" fill="#f8fafc"/>
+  <circle cx="187" cy="375" r="14" fill="#cbd5e1"/>
+  <text x="220" y="386" fill="#475569" font-family="Arial, sans-serif" font-size="24">Review next steps with your team</text>
+  <rect x="150" y="452" width="184" height="48" rx="24" fill="#2563eb"/>
+  <text x="182" y="484" fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="700">View plan</text>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Synthetic Chinese source advertisement for a fictional AI app</title>
+  <rect width="960" height="540" fill="#172554"/>
+  <circle cx="778" cy="126" r="112" fill="#1d4ed8"/>
+  <ellipse cx="778" cy="126" rx="166" ry="58" fill="none" stroke="#93c5fd" stroke-width="18" transform="rotate(-22,778,126)"/>
+  <text x="82" y="120" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="28" font-weight="700">Orbit AI</text>
+  <text x="82" y="214" fill="#ffffff" font-family="Arial, sans-serif" font-size="54" font-weight="700">把已批准笔记整理成任务摘要</text>
+  <text x="82" y="278" fill="#dbeafe" font-family="Arial, sans-serif" font-size="28">Orbit AI 将已批准的会议笔记转成清晰的任务摘要。</text>
+  <rect x="82" y="350" width="204" height="62" rx="31" fill="#fbbf24"/>
+  <text x="122" y="391" fill="#422006" font-family="Arial, sans-serif" font-size="25" font-weight="700">查看示例</text>
+  <text x="82" y="476" fill="#93c5fd" font-family="Arial, sans-serif" font-size="20">合成演示素材 · 非真实服务</text>
+</svg>

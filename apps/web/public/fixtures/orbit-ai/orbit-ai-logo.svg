@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" role="img" aria-labelledby="title">
+  <title id="title">Orbit AI fictional logo</title>
+  <rect width="640" height="240" rx="32" fill="#0f172a"/>
+  <circle cx="128" cy="120" r="38" fill="#60a5fa"/>
+  <ellipse cx="128" cy="120" rx="92" ry="38" fill="none" stroke="#c4b5fd" stroke-width="14" transform="rotate(-24,128,120)"/>
+  <circle cx="204" cy="86" r="13" fill="#fbbf24"/>
+  <text x="260" y="138" fill="#f8fafc" font-family="Arial, sans-serif" font-size="64" font-weight="700">Orbit AI</text>
+</svg>

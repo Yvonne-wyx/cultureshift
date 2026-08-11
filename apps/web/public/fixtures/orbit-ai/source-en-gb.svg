@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Synthetic British English source advertisement for a fictional AI app</title>
+  <rect width="960" height="540" fill="#1e1b4b"/>
+  <circle cx="790" cy="132" r="112" fill="#4338ca"/>
+  <ellipse cx="790" cy="132" rx="166" ry="58" fill="none" stroke="#c4b5fd" stroke-width="18" transform="rotate(-22,790,132)"/>
+  <text x="82" y="120" fill="#ddd6fe" font-family="Arial, sans-serif" font-size="28" font-weight="700">Orbit AI</text>
+  <text x="82" y="214" fill="#ffffff" font-family="Arial, sans-serif" font-size="54" font-weight="700">Turn approved notes into clear task summaries</text>
+  <text x="82" y="278" fill="#e0e7ff" font-family="Arial, sans-serif" font-size="28">Orbit AI helps teams organise approved meeting notes into task summaries.</text>
+  <rect x="82" y="350" width="204" height="62" rx="31" fill="#fbbf24"/>
+  <text x="122" y="391" fill="#422006" font-family="Arial, sans-serif" font-size="25" font-weight="700">View example</text>
+  <text x="82" y="476" fill="#c4b5fd" font-family="Arial, sans-serif" font-size="20">Synthetic demo asset · Not a live service</text>
+</svg>

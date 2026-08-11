@@ -1,0 +1,2 @@
+# Fixture SVG bytes are hashed by the demo manifest; preserve LF checkouts.
+apps/web/public/fixtures/**/*.svg text eol=lf

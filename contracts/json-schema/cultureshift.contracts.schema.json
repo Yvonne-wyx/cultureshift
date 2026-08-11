@@ -1,0 +1,860 @@
+{
+  "$defs": {
+    "AdAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock": {
+          "$ref": "#/$defs/BrandLock"
+        },
+        "detected_locale": {
+          "$ref": "#/$defs/Locale"
+        },
+        "hypotheses": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CulturalHypothesis"
+          },
+          "maxItems": 32,
+          "title": "Hypotheses",
+          "type": "array"
+        },
+        "source_asset": {
+          "$ref": "#/$defs/SourceAdAssetRef"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_asset",
+        "detected_locale",
+        "brand_lock"
+      ],
+      "title": "AdAnalysis",
+      "type": "object"
+    },
+    "AdCopy": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "cta_action_meaning": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Cta Action Meaning",
+          "type": "string"
+        },
+        "cta_label": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Cta Label",
+          "type": "string"
+        },
+        "headline": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Headline",
+          "type": "string"
+        },
+        "locale": {
+          "$ref": "#/$defs/Locale"
+        }
+      },
+      "required": [
+        "locale",
+        "headline",
+        "body",
+        "cta_label",
+        "cta_action_meaning"
+      ],
+      "title": "AdCopy",
+      "type": "object"
+    },
+    "AssetKind": {
+      "enum": [
+        "source_ad",
+        "logo",
+        "product_ui",
+        "layout_template",
+        "background",
+        "rendered_ad"
+      ],
+      "title": "AssetKind",
+      "type": "string"
+    },
+    "AssetRef": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "format": "uuid",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "media_type": {
+          "pattern": "^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "provenance_ref": {
+          "$ref": "#/$defs/PublicReference"
+        },
+        "rights_ref": {
+          "$ref": "#/$defs/PublicReference"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "kind",
+        "media_type",
+        "sha256",
+        "provenance_ref",
+        "rights_ref"
+      ],
+      "title": "AssetRef",
+      "type": "object"
+    },
+    "BrandLock": {
+      "additionalProperties": false,
+      "properties": {
+        "benefit_order": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Benefit Order",
+          "type": "array"
+        },
+        "cta_action_meaning": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Cta Action Meaning",
+          "type": "string"
+        },
+        "layout_template_asset_id": {
+          "format": "uuid",
+          "title": "Layout Template Asset Id",
+          "type": "string"
+        },
+        "localizable_fields": {
+          "items": {
+            "enum": [
+              "narrative",
+              "use_scenario",
+              "trust_information",
+              "language"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Localizable Fields",
+          "type": "array"
+        },
+        "logo_asset_id": {
+          "format": "uuid",
+          "title": "Logo Asset Id",
+          "type": "string"
+        },
+        "product_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Product Name",
+          "type": "string"
+        },
+        "product_ui_asset_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Product Ui Asset Ids",
+          "type": "array"
+        },
+        "verified_product_facts": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Verified Product Facts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "logo_asset_id",
+        "product_name",
+        "verified_product_facts",
+        "product_ui_asset_ids",
+        "benefit_order",
+        "cta_action_meaning",
+        "layout_template_asset_id",
+        "localizable_fields"
+      ],
+      "title": "BrandLock",
+      "type": "object"
+    },
+    "CreativeBrief": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock": {
+          "$ref": "#/$defs/BrandLock"
+        },
+        "direction": {
+          "$ref": "#/$defs/LocalizationDirection"
+        },
+        "hypotheses": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CulturalHypothesis"
+          },
+          "maxItems": 32,
+          "title": "Hypotheses",
+          "type": "array"
+        },
+        "narrative": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Narrative",
+          "type": "string"
+        },
+        "target_locale": {
+          "$ref": "#/$defs/Locale"
+        },
+        "trust_information": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Trust Information",
+          "type": "string"
+        },
+        "use_scenario": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Use Scenario",
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "target_locale",
+        "brand_lock",
+        "narrative",
+        "use_scenario",
+        "trust_information"
+      ],
+      "title": "CreativeBrief",
+      "type": "object"
+    },
+    "CritiqueReport": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock_preserved": {
+          "title": "Brand Lock Preserved",
+          "type": "boolean"
+        },
+        "requires_human_review": {
+          "default": true,
+          "title": "Requires Human Review",
+          "type": "boolean"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brand_lock_preserved"
+      ],
+      "title": "CritiqueReport",
+      "type": "object"
+    },
+    "CulturalHypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Claim",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/PublicReference"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "hypothesis_id": {
+          "format": "uuid",
+          "title": "Hypothesis Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "review_status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected"
+          ],
+          "title": "Review Status",
+          "type": "string"
+        },
+        "target_market": {
+          "$ref": "#/$defs/Market"
+        },
+        "uncertainty": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Uncertainty",
+          "type": "string"
+        },
+        "validation_requirements": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Validation Requirements",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hypothesis_id",
+        "target_market",
+        "claim",
+        "evidence_refs",
+        "uncertainty",
+        "rationale",
+        "validation_requirements"
+      ],
+      "title": "CulturalHypothesis",
+      "type": "object"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "fixture",
+        "live"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "ExportSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_status": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Approval Status",
+          "type": "string"
+        },
+        "exported_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "result_version": {
+          "minimum": 1,
+          "title": "ExportResultVersion",
+          "type": "integer"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "result_version",
+        "approval_status",
+        "exported_at"
+      ],
+      "title": "ExportSummary",
+      "type": "object"
+    },
+    "FeedbackRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "feedback": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Feedback",
+          "type": "string"
+        },
+        "requested_changes": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Requested Changes",
+          "type": "array"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "submitted_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        }
+      },
+      "required": [
+        "run_id",
+        "feedback",
+        "requested_changes",
+        "submitted_at"
+      ],
+      "title": "FeedbackRequest",
+      "type": "object"
+    },
+    "JobAccepted": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "accepted_at"
+      ],
+      "title": "JobAccepted",
+      "type": "object"
+    },
+    "Locale": {
+      "enum": [
+        "zh-CN",
+        "en-GB"
+      ],
+      "title": "Locale",
+      "type": "string"
+    },
+    "LocalizationDirection": {
+      "enum": [
+        "china_to_uk",
+        "uk_to_china"
+      ],
+      "title": "LocalizationDirection",
+      "type": "string"
+    },
+    "Market": {
+      "enum": [
+        "china",
+        "united_kingdom"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "ProjectRunContract": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "request": {
+          "$ref": "#/$defs/RunCreate"
+        },
+        "result_versions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResultVersion"
+          },
+          "maxItems": 64,
+          "title": "Result Versions",
+          "type": "array"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "warning_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warning Codes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "request",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "ProjectRunContract",
+      "type": "object"
+    },
+    "PublicReference": {
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^(?:fixture|rights|evidence):[A-Za-z0-9][A-Za-z0-9._/-]*$",
+      "type": "string"
+    },
+    "ResultVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/AdAnalysis"
+        },
+        "brief": {
+          "$ref": "#/$defs/CreativeBrief"
+        },
+        "copy": {
+          "$ref": "#/$defs/AdCopy"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "critique": {
+          "$ref": "#/$defs/CritiqueReport"
+        },
+        "rendered_asset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssetRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "analysis",
+        "brief",
+        "copy",
+        "critique",
+        "created_at"
+      ],
+      "title": "ResultVersion",
+      "type": "object"
+    },
+    "RetryRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_category": {
+          "enum": [
+            "validation",
+            "generation",
+            "review"
+          ],
+          "title": "Reason Category",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "reason_category"
+      ],
+      "title": "RetryRequest",
+      "type": "object"
+    },
+    "RunCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock": {
+          "$ref": "#/$defs/BrandLock"
+        },
+        "creative_format": {
+          "const": "static_ad",
+          "title": "Creative Format",
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/$defs/LocalizationDirection"
+        },
+        "execution_mode": {
+          "$ref": "#/$defs/ExecutionMode",
+          "const": "fixture",
+          "title": "FixtureExecutionMode"
+        },
+        "product_category": {
+          "enum": [
+            "ai_software",
+            "ai_application"
+          ],
+          "title": "Product Category",
+          "type": "string"
+        },
+        "source_asset": {
+          "$ref": "#/$defs/SourceAdAssetRef"
+        }
+      },
+      "required": [
+        "direction",
+        "execution_mode",
+        "source_asset",
+        "brand_lock",
+        "product_category",
+        "creative_format"
+      ],
+      "title": "RunCreate",
+      "type": "object"
+    },
+    "RunCreated": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_token": {
+          "maxLength": 4096,
+          "minLength": 16,
+          "title": "Capability Token",
+          "type": "string"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "capability_token",
+        "created_at"
+      ],
+      "title": "RunCreated",
+      "type": "object"
+    },
+    "RunStatus": {
+      "enum": [
+        "pending",
+        "in_progress",
+        "blocked",
+        "completed",
+        "failed"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    },
+    "SourceAdAssetRef": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "format": "uuid",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "const": "source_ad",
+          "title": "SourceAssetKind",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "provenance_ref": {
+          "$ref": "#/$defs/PublicReference"
+        },
+        "rights_ref": {
+          "$ref": "#/$defs/PublicReference"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "kind",
+        "media_type",
+        "sha256",
+        "provenance_ref",
+        "rights_ref"
+      ],
+      "title": "SourceAdAssetRef",
+      "type": "object"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "pattern": "(?:Z|\\+00:00)$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "ad_analysis": {
+      "$ref": "#/$defs/AdAnalysis"
+    },
+    "ad_copy": {
+      "$ref": "#/$defs/AdCopy"
+    },
+    "asset_ref": {
+      "$ref": "#/$defs/AssetRef"
+    },
+    "brand_lock": {
+      "$ref": "#/$defs/BrandLock"
+    },
+    "creative_brief": {
+      "$ref": "#/$defs/CreativeBrief"
+    },
+    "critique_report": {
+      "$ref": "#/$defs/CritiqueReport"
+    },
+    "cultural_hypothesis": {
+      "$ref": "#/$defs/CulturalHypothesis"
+    },
+    "export_summary": {
+      "$ref": "#/$defs/ExportSummary"
+    },
+    "feedback_request": {
+      "$ref": "#/$defs/FeedbackRequest"
+    },
+    "job_accepted": {
+      "$ref": "#/$defs/JobAccepted"
+    },
+    "project_run": {
+      "$ref": "#/$defs/ProjectRunContract"
+    },
+    "result_version": {
+      "$ref": "#/$defs/ResultVersion"
+    },
+    "retry_request": {
+      "$ref": "#/$defs/RetryRequest"
+    },
+    "run_create": {
+      "$ref": "#/$defs/RunCreate"
+    },
+    "run_created": {
+      "$ref": "#/$defs/RunCreated"
+    }
+  },
+  "required": [
+    "asset_ref",
+    "cultural_hypothesis",
+    "brand_lock",
+    "ad_analysis",
+    "creative_brief",
+    "ad_copy",
+    "critique_report",
+    "result_version",
+    "run_create",
+    "run_created",
+    "job_accepted",
+    "feedback_request",
+    "retry_request",
+    "export_summary",
+    "project_run"
+  ],
+  "title": "ContractRegistry",
+  "type": "object"
+}

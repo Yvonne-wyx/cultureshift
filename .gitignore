@@ -43,6 +43,7 @@ models/
 private/
 evidence/
 .superpowers/
+.worktrees/
 
 # Editors and operating systems
 .idea/
