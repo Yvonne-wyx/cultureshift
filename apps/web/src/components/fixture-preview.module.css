@@ -171,6 +171,16 @@
   margin-top: 0;
 }
 
+.resultLink {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.65rem 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: #164a7b;
+  border-radius: 0.25rem;
+}
+
 @media (max-width: 20rem) {
   .header,
   .section,

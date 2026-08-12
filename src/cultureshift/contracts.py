@@ -256,6 +256,15 @@ class RunCreated(ContractModel):
     created_at: UtcDatetime
 
 
+class RunSnapshot(ContractModel):
+    run_id: UUID
+    direction: LocalizationDirection
+    status: RunStatus
+    warning_codes: tuple[WarningCode, ...] = Field(default=(), max_length=32)
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
+
+
 class JobAccepted(ContractModel):
     run_id: UUID
     status: RunStatus
@@ -317,6 +326,7 @@ class ContractRegistry(ContractModel):
     result_version: ResultVersion
     run_create: RunCreate
     run_created: RunCreated
+    run_snapshot: RunSnapshot
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
     retry_request: RetryRequest

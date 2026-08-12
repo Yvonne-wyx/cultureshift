@@ -1,19 +1,34 @@
 from __future__ import annotations
 
-import secrets
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from cultureshift.capability_tokens import Capability, CapabilityTokenService
-from cultureshift.contracts import RunCreate, RunCreated, RunStatus
+from cultureshift.capability_tokens import (
+    Capability,
+    CapabilityTokenError,
+    CapabilityTokenService,
+)
+from cultureshift.contracts import RunCreate, RunCreated, RunSnapshot, RunStatus
 from cultureshift.domain import ProjectRun
-from cultureshift.repository import SQLiteProjectRunRepository
+from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
+
+
+def _capability_service_from_environment() -> CapabilityTokenService:
+    configured = os.environ.get("CULTURESHIFT_CAPABILITY_SECRET")
+    if configured is None:
+        raise RuntimeError("CULTURESHIFT_CAPABILITY_SECRET is required")
+    secret = configured.encode("utf-8")
+    if len(secret) < 32:
+        raise RuntimeError("CULTURESHIFT_CAPABILITY_SECRET must be at least 32 UTF-8 bytes")
+    return CapabilityTokenService(secret=secret, audience="cultureshift-api")
 
 
 def create_app(
@@ -22,10 +37,7 @@ def create_app(
     token_service: CapabilityTokenService | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
-    tokens = token_service or CapabilityTokenService(
-        secret=secrets.token_bytes(32),
-        audience="cultureshift-api",
-    )
+    tokens = token_service or _capability_service_from_environment()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -79,6 +91,50 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={"code": "run_creation_failed"},
             ) from None
+
+    @application.get(
+        "/api/v1/runs/{run_id}",
+        response_model=RunSnapshot,
+        tags=["runs"],
+    )
+    def get_run(run_id: UUID, request: Request) -> RunSnapshot:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(
+                token,
+                required=Capability.READ_PROJECT_RUN,
+            )
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        try:
+            run = runs.get(run_id)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+        return RunSnapshot(
+            run_id=run.id,
+            direction=run.direction,
+            status=run.status,
+            warning_codes=run.warning_codes,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+        )
 
     return application
 

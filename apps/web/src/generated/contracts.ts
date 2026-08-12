@@ -350,6 +350,11 @@ export type ReasonCategory = "validation" | "generation" | "review";
 export type RunId4 = string;
 export type CapabilityToken = string;
 export type RunId5 = string;
+export type RunId6 = string;
+/**
+ * @maxItems 32
+ */
+export type WarningCodes1 = string[];
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "ExecutionMode".
@@ -372,6 +377,7 @@ export interface ContractRegistry {
   retry_request: RetryRequest;
   run_create: RunCreate;
   run_created: RunCreated;
+  run_snapshot: RunSnapshot;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -556,4 +562,16 @@ export interface RunCreated {
   created_at: UtcDatetime;
   run_id: RunId5;
   status: RunStatus;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "RunSnapshot".
+ */
+export interface RunSnapshot {
+  created_at: UtcDatetime;
+  direction: LocalizationDirection;
+  run_id: RunId6;
+  status: RunStatus;
+  updated_at: UtcDatetime;
+  warning_codes?: WarningCodes1;
 }

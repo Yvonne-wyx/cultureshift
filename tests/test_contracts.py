@@ -16,8 +16,10 @@ from cultureshift.contracts import (
     ProjectRunContract,
     ResultVersion,
     RunCreate,
+    RunSnapshot,
     RunStatus,
 )
+from cultureshift.domain import LocalizationDirection, ProjectRun, ProjectRunStatus
 
 
 def _valid_result_payload(request: RunCreate) -> dict[str, object]:
@@ -141,6 +143,27 @@ def test_run_create_accepts_only_fixture_mvp_payload(
     wrong_kind["kind"] = "logo"
     with pytest.raises(ValidationError):
         RunCreate.model_validate({**valid_run_payload, "source_asset": wrong_kind})
+
+
+def test_run_snapshot_is_public_serializable_and_closed() -> None:
+    run = ProjectRun(
+        direction=LocalizationDirection.CHINA_TO_UK,
+        status=ProjectRunStatus.PENDING,
+        warning_codes=("human_review_required",),
+    )
+    snapshot = RunSnapshot(
+        run_id=run.id,
+        direction=run.direction,
+        status=run.status,
+        warning_codes=run.warning_codes,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+    )
+
+    assert RunSnapshot.model_validate_json(snapshot.model_dump_json()) == snapshot
+    assert snapshot.model_dump(mode="json")["direction"] == "china_to_uk"
+    with pytest.raises(ValidationError):
+        RunSnapshot.model_validate({**snapshot.model_dump(), "capability_token": "private"})
 
 
 def test_ad_analysis_requires_source_ad_asset(
@@ -369,6 +392,7 @@ def test_registry_schema_contains_every_public_contract() -> None:
         "ResultVersion",
         "RunCreate",
         "RunCreated",
+        "RunSnapshot",
         "JobAccepted",
         "FeedbackRequest",
         "RetryRequest",

@@ -721,6 +721,47 @@
       "title": "RunCreated",
       "type": "object"
     },
+    "RunSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "direction": {
+          "$ref": "#/$defs/LocalizationDirection"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "warning_codes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warning Codes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "direction",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "RunSnapshot",
+      "type": "object"
+    },
     "RunStatus": {
       "enum": [
         "pending",
@@ -836,6 +877,9 @@
     },
     "run_created": {
       "$ref": "#/$defs/RunCreated"
+    },
+    "run_snapshot": {
+      "$ref": "#/$defs/RunSnapshot"
     }
   },
   "required": [
@@ -849,6 +893,7 @@
     "result_version",
     "run_create",
     "run_created",
+    "run_snapshot",
     "job_accepted",
     "feedback_request",
     "retry_request",

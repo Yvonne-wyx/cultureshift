@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import type { FixtureBundle } from "../fixtures/types";
 
@@ -164,6 +165,9 @@ export function FixturePreview({
 
       <footer className={styles.footer}>
         <p>{preview.limitation}</p>
+        <Link className={styles.resultLink} href={`/results/${fixture.fixture_id}`}>
+          View {directionLabel} result
+        </Link>
       </footer>
     </article>
   );

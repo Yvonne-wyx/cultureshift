@@ -96,9 +96,13 @@ describe("FixturePreview", () => {
     const limitation = screen.getByText(fixture.preview.limitation);
     expect(limitation).toBeInTheDocument();
     expect(limitation.textContent).not.toMatch(/approval|correctness|compliance|uplift/i);
+    expect(screen.getByRole("link", { name: `View ${directionLabel} result` })).toHaveAttribute(
+      "href",
+      `/results/${id}`,
+    );
     expect(
       container.querySelectorAll(
-        'button, a, input, textarea, select, form, [contenteditable]:not([contenteditable="false"])',
+        'button, input, textarea, select, form, [contenteditable]:not([contenteditable="false"])',
       ),
     ).toHaveLength(0);
     expect(container.querySelectorAll("[data-watermark]")).toHaveLength(0);
