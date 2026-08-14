@@ -1,0 +1,12 @@
+{
+  "protocol_version": "0.2",
+  "status": "pending_human_activation",
+  "opened_at": null,
+  "real_reviewers_confirmed": 0,
+  "activation_requirements": [
+    "named_human_coordinator",
+    "approved_private_contact_route",
+    "protected_consent_vault"
+  ],
+  "public_claim": "Recruitment materials are ready; no outreach evidence is recorded."
+}

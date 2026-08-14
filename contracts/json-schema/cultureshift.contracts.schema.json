@@ -152,6 +152,12 @@
         "created_at": {
           "$ref": "#/$defs/UtcDatetime"
         },
+        "delete_capability_token": {
+          "maxLength": 4096,
+          "minLength": 16,
+          "title": "Delete Capability Token",
+          "type": "string"
+        },
         "size_bytes": {
           "maximum": 10485760,
           "minimum": 1,
@@ -162,7 +168,8 @@
       "required": [
         "asset",
         "size_bytes",
-        "created_at"
+        "created_at",
+        "delete_capability_token"
       ],
       "title": "AssetUploaded",
       "type": "object"

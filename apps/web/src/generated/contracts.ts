@@ -246,6 +246,7 @@ export type AssetId1 = string;
 export type AssetKind = "source_ad" | "logo" | "product_ui" | "layout_template" | "background" | "rendered_ad";
 export type MediaType1 = string;
 export type Sha2561 = string;
+export type DeleteCapabilityToken = string;
 export type SizeBytes = number;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -464,6 +465,7 @@ export interface AssetRef {
 export interface AssetUploaded {
   asset: SourceAdAssetRef;
   created_at: UtcDatetime;
+  delete_capability_token: DeleteCapabilityToken;
   size_bytes: SizeBytes;
 }
 /**

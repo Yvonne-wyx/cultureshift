@@ -137,6 +137,9 @@ class AssetUploaded(ContractModel):
     asset: SourceAdAssetRef
     size_bytes: int = Field(ge=1, le=10 * 1024 * 1024)
     created_at: UtcDatetime
+    delete_capability_token: Annotated[
+        str, StringConstraints(min_length=16, max_length=4096)
+    ]
 
 
 class CulturalHypothesis(ContractModel):

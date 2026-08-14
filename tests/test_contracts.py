@@ -185,8 +185,10 @@ def test_asset_uploaded_contract_is_public_serializable_and_closed() -> None:
         ),
         size_bytes=1024,
         created_at=created_at,
+        delete_capability_token="fixture-delete-capability",
     )
     assert AssetUploaded.model_validate_json(uploaded.model_dump_json()) == uploaded
+    assert uploaded.delete_capability_token == "fixture-delete-capability"
     with pytest.raises(ValidationError):
         AssetUploaded.model_validate({**uploaded.model_dump(), "storage_path": "private"})
 

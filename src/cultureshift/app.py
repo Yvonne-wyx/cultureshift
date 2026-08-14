@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from cultureshift.asset_storage import (
     MAX_ASSET_BYTES,
     AssetEmptyError,
+    AssetLifecycleClosedError,
     AssetMetadataError,
     AssetStorageError,
     AssetTooLargeError,
@@ -28,6 +29,7 @@ from cultureshift.capability_tokens import (
 )
 from cultureshift.contracts import AssetUploaded, RunCreate, RunCreated, RunSnapshot, RunStatus
 from cultureshift.domain import ProjectRun
+from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
 
 
@@ -53,14 +55,19 @@ def create_app(
     repository: SQLiteProjectRunRepository | None = None,
     token_service: CapabilityTokenService | None = None,
     asset_store: TemporaryAssetStore | None = None,
+    upload_rate_limiter: FixedWindowRateLimiter | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
     assets = asset_store or _asset_store_from_environment()
+    upload_limit = upload_rate_limiter or FixedWindowRateLimiter(
+        limit=10, window=timedelta(minutes=1)
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         runs.initialize()
+        assets.purge_expired()
         yield
 
     application = FastAPI(title="CultureShift API", version="0.1.0", lifespan=lifespan)
@@ -90,6 +97,12 @@ def create_app(
         tags=["assets"],
     )
     async def upload_asset(request: Request) -> AssetUploaded:
+        client_key = request.client.host if request.client is not None else "unknown-client"
+        if not upload_limit.allow(client_key):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "upload_rate_limited"},
+            )
         content = bytearray()
         async for chunk in request.stream():
             content.extend(chunk)
@@ -99,11 +112,26 @@ def create_app(
                     detail={"code": "asset_too_large"},
                 )
         try:
-            return assets.store(
+            stored = assets.store(
                 bytes(content),
                 declared_media_type=request.headers.get("Content-Type", ""),
                 provenance_ref=request.headers.get("X-Provenance-Ref", ""),
                 rights_ref=request.headers.get("X-Rights-Ref", ""),
+            )
+            try:
+                delete_token = tokens.issue(
+                    subject=str(stored.asset.asset_id),
+                    capabilities={Capability.DELETE_ASSET},
+                    ttl=timedelta(hours=24),
+                )
+            except Exception:
+                assets.delete(stored.asset.asset_id, reason="token_issue_failed")
+                raise
+            return AssetUploaded(
+                asset=stored.asset,
+                size_bytes=stored.size_bytes,
+                created_at=stored.created_at,
+                delete_capability_token=delete_token,
             )
         except AssetEmptyError:
             code, status_code = "asset_empty", status.HTTP_400_BAD_REQUEST
@@ -115,11 +143,46 @@ def create_app(
             code, status_code = "asset_too_large", status.HTTP_413_CONTENT_TOO_LARGE
         except AssetMetadataError:
             code, status_code = "invalid_asset_metadata", status.HTTP_422_UNPROCESSABLE_CONTENT
+        except AssetLifecycleClosedError:
+            code, status_code = "asset_lifecycle_closed", status.HTTP_409_CONFLICT
         except AssetStorageError:
             code, status_code = "asset_storage_failed", status.HTTP_500_INTERNAL_SERVER_ERROR
         except Exception:
             code, status_code = "asset_storage_failed", status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(status_code=status_code, detail={"code": code}) from None
+
+    @application.delete(
+        "/api/v1/assets/{asset_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["assets"],
+    )
+    def delete_asset(asset_id: UUID, request: Request) -> None:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.DELETE_ASSET)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(asset_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        try:
+            assets.delete(asset_id)
+        except AssetStorageError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "asset_deletion_failed"},
+            ) from None
 
     @application.post(
         "/api/v1/runs",

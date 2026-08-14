@@ -8,10 +8,13 @@ from fastapi.testclient import TestClient
 from cultureshift.app import create_app
 from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
+from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import SQLiteProjectRunRepository
 
 
-def make_client(tmp_path) -> tuple[TestClient, SQLiteProjectRunRepository]:
+def make_client(
+    tmp_path, *, upload_rate_limiter: FixedWindowRateLimiter | None = None
+) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
     return (
@@ -20,6 +23,7 @@ def make_client(tmp_path) -> tuple[TestClient, SQLiteProjectRunRepository]:
                 repository=repository,
                 token_service=tokens,
                 asset_store=TemporaryAssetStore(tmp_path / "assets"),
+                upload_rate_limiter=upload_rate_limiter,
             )
         ),
         repository,
@@ -316,10 +320,13 @@ def test_upload_asset_returns_public_metadata_and_private_file(tmp_path) -> None
     assert body["asset"]["media_type"] == "image/png"
     assert body["size_bytes"] == len(content)
     assert "expires_at" in body["asset"]
+    assert len(body["delete_capability_token"]) >= 16
     assert response.text.find(content.hex()) == -1
     stored = list((tmp_path / "assets").glob("*.png"))
     assert len(stored) == 1
     assert stored[0].read_bytes() == content
+    metadata = next((tmp_path / "assets").glob("*.meta.json")).read_text(encoding="utf-8")
+    assert body["delete_capability_token"] not in metadata
 
 
 @pytest.mark.parametrize(
@@ -376,3 +383,98 @@ def test_upload_asset_hides_unexpected_storage_failure(tmp_path) -> None:
     assert response.status_code == 500
     assert response.json() == {"detail": {"code": "asset_storage_failed"}}
     assert "private storage detail" not in response.text
+
+
+def test_delete_asset_requires_matching_one_time_capability_and_is_idempotent(tmp_path) -> None:
+    client, _ = make_client(tmp_path)
+    content = b"\x89PNG\r\n\x1a\nfixture"
+    headers = {
+        "Content-Type": "image/png",
+        "X-Provenance-Ref": "fixture:user-upload/day7",
+        "X-Rights-Ref": "rights:authorized-upload/day7",
+    }
+    with client:
+        uploaded = client.post("/api/v1/assets", content=content, headers=headers).json()
+        asset_id = uploaded["asset"]["asset_id"]
+        token = uploaded["delete_capability_token"]
+        deleted = client.delete(
+            f"/api/v1/assets/{asset_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        repeated = client.delete(
+            f"/api/v1/assets/{asset_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert deleted.status_code == repeated.status_code == 204
+    assert not list((tmp_path / "assets").glob(f"{asset_id}.*"))
+
+
+def test_delete_asset_rejects_wrong_subject_without_echo(tmp_path) -> None:
+    client, _ = make_client(tmp_path)
+    wrong_id = uuid4()
+    token = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api").issue(
+        subject=str(uuid4()),
+        capabilities={Capability.DELETE_ASSET},
+        ttl=timedelta(minutes=5),
+    )
+    with client:
+        response = client.delete(
+            f"/api/v1/assets/{wrong_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": {"code": "capability_subject_mismatch"}}
+    assert token not in response.text
+
+
+def test_delete_asset_rejects_missing_capability(tmp_path) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        response = client.delete(f"/api/v1/assets/{uuid4()}")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"code": "invalid_capability"}}
+
+
+def test_upload_rate_limit_is_generic_and_does_not_write_second_asset(tmp_path) -> None:
+    limiter = FixedWindowRateLimiter(limit=1, window=timedelta(minutes=1))
+    client, _ = make_client(tmp_path, upload_rate_limiter=limiter)
+    headers = {
+        "Content-Type": "image/png",
+        "X-Provenance-Ref": "fixture:user-upload/day7",
+        "X-Rights-Ref": "rights:authorized-upload/day7",
+    }
+    with client:
+        first = client.post("/api/v1/assets", content=b"\x89PNG\r\n\x1a\none", headers=headers)
+        second = client.post(
+            "/api/v1/assets", content=b"\x89PNG\r\n\x1a\nprivate-second", headers=headers
+        )
+
+    assert first.status_code == 201
+    assert second.status_code == 429
+    assert second.json() == {"detail": {"code": "upload_rate_limited"}}
+    assert "private-second" not in second.text
+    assert len(list((tmp_path / "assets").glob("*.png"))) == 1
+
+
+def test_startup_purges_expired_assets(tmp_path, valid_run_payload) -> None:
+    store = TemporaryAssetStore(tmp_path / "assets")
+    old = datetime.now(UTC) - timedelta(hours=25)
+    uploaded = store.store(
+        b"\x89PNG\r\n\x1a\nold",
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day7",
+        rights_ref="rights:authorized-upload/day7",
+        now=old,
+    )
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+
+    with TestClient(
+        create_app(repository=repository, token_service=tokens, asset_store=store)
+    ) as client:
+        assert client.get("/healthz").status_code == 200
+
+    assert not list((tmp_path / "assets").glob(f"{uploaded.asset.asset_id}.*"))

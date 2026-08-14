@@ -13,6 +13,7 @@ from typing import Any
 class Capability(StrEnum):
     READ_PROJECT_RUN = "project_run:read"
     UPDATE_PROJECT_RUN = "project_run:update"
+    DELETE_ASSET = "asset:delete"
 
 
 @dataclass(frozen=True)

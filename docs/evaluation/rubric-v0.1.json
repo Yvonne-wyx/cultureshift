@@ -1,6 +1,6 @@
 {
-  "protocol_version": "0.1",
-  "status": "frozen_draft",
+  "protocol_version": "0.2",
+  "status": "frozen",
   "directions": ["china_to_uk", "uk_to_china"],
   "scale": [
     {"value": 1, "label": "strong concern"},
@@ -46,5 +46,12 @@
       "blocking": false,
       "reviewer_observation": true
     }
+  ],
+  "severe_risk_flags": [
+    {"id": "brand_lock_failure", "type": "boolean"},
+    {"id": "unsupported_claim", "type": "boolean"},
+    {"id": "prohibited_category", "type": "boolean"},
+    {"id": "privacy_or_rights_violation", "type": "boolean"},
+    {"id": "harmful_or_misleading_content", "type": "boolean"}
   ]
 }
