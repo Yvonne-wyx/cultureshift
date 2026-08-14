@@ -246,6 +246,7 @@ export type AssetId1 = string;
 export type AssetKind = "source_ad" | "logo" | "product_ui" | "layout_template" | "background" | "rendered_ad";
 export type MediaType1 = string;
 export type Sha2561 = string;
+export type SizeBytes = number;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "LocalizationDirection".
@@ -365,6 +366,7 @@ export interface ContractRegistry {
   ad_analysis: AdAnalysis;
   ad_copy: AdCopy;
   asset_ref: AssetRef;
+  asset_uploaded: AssetUploaded;
   brand_lock: BrandLock;
   creative_brief: CreativeBrief;
   critique_report: CritiqueReport;
@@ -454,6 +456,15 @@ export interface AssetRef {
   provenance_ref: PublicReference;
   rights_ref: PublicReference;
   sha256: Sha2561;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "AssetUploaded".
+ */
+export interface AssetUploaded {
+  asset: SourceAdAssetRef;
+  created_at: UtcDatetime;
+  size_bytes: SizeBytes;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema

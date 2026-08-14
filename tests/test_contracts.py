@@ -166,6 +166,31 @@ def test_run_snapshot_is_public_serializable_and_closed() -> None:
         RunSnapshot.model_validate({**snapshot.model_dump(), "capability_token": "private"})
 
 
+def test_asset_uploaded_contract_is_public_serializable_and_closed() -> None:
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4
+
+    from cultureshift.contracts import AssetUploaded, SourceAdAssetRef
+
+    created_at = datetime(2026, 8, 14, tzinfo=UTC)
+    uploaded = AssetUploaded(
+        asset=SourceAdAssetRef(
+            asset_id=uuid4(),
+            kind="source_ad",
+            media_type="image/png",
+            sha256="a" * 64,
+            provenance_ref="fixture:user-upload/day6",
+            rights_ref="rights:authorized-upload/day6",
+            expires_at=created_at + timedelta(hours=24),
+        ),
+        size_bytes=1024,
+        created_at=created_at,
+    )
+    assert AssetUploaded.model_validate_json(uploaded.model_dump_json()) == uploaded
+    with pytest.raises(ValidationError):
+        AssetUploaded.model_validate({**uploaded.model_dump(), "storage_path": "private"})
+
+
 def test_ad_analysis_requires_source_ad_asset(
     valid_run_payload: dict[str, object],
 ) -> None:
@@ -383,6 +408,7 @@ def test_registry_schema_contains_every_public_contract() -> None:
     definitions = ContractRegistry.model_json_schema(by_alias=True)["$defs"]
     for name in (
         "AssetRef",
+        "AssetUploaded",
         "BrandLock",
         "CulturalHypothesis",
         "AdAnalysis",
@@ -413,6 +439,7 @@ def test_registry_schema_contains_every_public_contract() -> None:
     assert public_ref["pattern"]
     for definition, field in (
         ("AssetRef", "expires_at"),
+        ("AssetUploaded", "created_at"),
         ("ResultVersion", "created_at"),
         ("RunCreated", "created_at"),
         ("JobAccepted", "accepted_at"),

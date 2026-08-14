@@ -1,0 +1,50 @@
+{
+  "protocol_version": "0.1",
+  "status": "frozen_draft",
+  "directions": ["china_to_uk", "uk_to_china"],
+  "scale": [
+    {"value": 1, "label": "strong concern"},
+    {"value": 2, "label": "material concern"},
+    {"value": 3, "label": "uncertain or mixed"},
+    {"value": 4, "label": "generally suitable"},
+    {"value": 5, "label": "strongly suitable"}
+  ],
+  "criteria": [
+    {
+      "id": "brand_lock_preservation",
+      "prompt": "Does the variant preserve the supplied logo, product name, verified facts, real UI, benefit order, CTA action meaning, and layout template?",
+      "blocking": true,
+      "reviewer_observation": true
+    },
+    {
+      "id": "language_naturalness",
+      "prompt": "How natural and understandable is the language for the intended professional audience?",
+      "blocking": false,
+      "reviewer_observation": true
+    },
+    {
+      "id": "task_clarity",
+      "prompt": "How clearly does the variant communicate the verified AI-software task and next action?",
+      "blocking": false,
+      "reviewer_observation": true
+    },
+    {
+      "id": "evidence_traceability",
+      "prompt": "Can the reviewer trace localization choices to rule IDs, pending hypotheses, and evidence references?",
+      "blocking": false,
+      "reviewer_observation": true
+    },
+    {
+      "id": "safety_and_non_misleadingness",
+      "prompt": "Does the variant avoid unsupported claims, prohibited categories, and misleading certainty?",
+      "blocking": false,
+      "reviewer_observation": true
+    },
+    {
+      "id": "overall_preference",
+      "prompt": "Subject to Brand Lock passing, which blinded variant is more suitable for further accountable review?",
+      "blocking": false,
+      "reviewer_observation": true
+    }
+  ]
+}

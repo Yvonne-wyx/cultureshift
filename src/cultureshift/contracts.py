@@ -133,6 +133,12 @@ class SourceAdAssetRef(AssetRef):
     kind: Literal[AssetKind.SOURCE_AD] = Field(title="SourceAssetKind")
 
 
+class AssetUploaded(ContractModel):
+    asset: SourceAdAssetRef
+    size_bytes: int = Field(ge=1, le=10 * 1024 * 1024)
+    created_at: UtcDatetime
+
+
 class CulturalHypothesis(ContractModel):
     hypothesis_id: UUID
     target_market: Market
@@ -317,6 +323,7 @@ class ProjectRunContract(ContractModel):
 
 class ContractRegistry(ContractModel):
     asset_ref: AssetRef
+    asset_uploaded: AssetUploaded
     cultural_hypothesis: CulturalHypothesis
     brand_lock: BrandLock
     ad_analysis: AdAnalysis

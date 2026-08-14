@@ -11,12 +11,22 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from cultureshift.asset_storage import (
+    MAX_ASSET_BYTES,
+    AssetEmptyError,
+    AssetMetadataError,
+    AssetStorageError,
+    AssetTooLargeError,
+    AssetTypeMismatchError,
+    TemporaryAssetStore,
+    UnsupportedAssetTypeError,
+)
 from cultureshift.capability_tokens import (
     Capability,
     CapabilityTokenError,
     CapabilityTokenService,
 )
-from cultureshift.contracts import RunCreate, RunCreated, RunSnapshot, RunStatus
+from cultureshift.contracts import AssetUploaded, RunCreate, RunCreated, RunSnapshot, RunStatus
 from cultureshift.domain import ProjectRun
 from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
 
@@ -31,13 +41,22 @@ def _capability_service_from_environment() -> CapabilityTokenService:
     return CapabilityTokenService(secret=secret, audience="cultureshift-api")
 
 
+def _asset_store_from_environment() -> TemporaryAssetStore:
+    configured = os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", "")
+    if not configured.strip():
+        raise RuntimeError("CULTURESHIFT_TEMP_ASSET_DIR is required")
+    return TemporaryAssetStore(configured)
+
+
 def create_app(
     *,
     repository: SQLiteProjectRunRepository | None = None,
     token_service: CapabilityTokenService | None = None,
+    asset_store: TemporaryAssetStore | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
+    assets = asset_store or _asset_store_from_environment()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -63,6 +82,44 @@ def create_app(
     @application.get("/healthz", tags=["operations"])
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @application.post(
+        "/api/v1/assets",
+        response_model=AssetUploaded,
+        status_code=status.HTTP_201_CREATED,
+        tags=["assets"],
+    )
+    async def upload_asset(request: Request) -> AssetUploaded:
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > MAX_ASSET_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail={"code": "asset_too_large"},
+                )
+        try:
+            return assets.store(
+                bytes(content),
+                declared_media_type=request.headers.get("Content-Type", ""),
+                provenance_ref=request.headers.get("X-Provenance-Ref", ""),
+                rights_ref=request.headers.get("X-Rights-Ref", ""),
+            )
+        except AssetEmptyError:
+            code, status_code = "asset_empty", status.HTTP_400_BAD_REQUEST
+        except UnsupportedAssetTypeError:
+            code, status_code = "unsupported_asset_type", status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        except AssetTypeMismatchError:
+            code, status_code = "asset_type_mismatch", status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        except AssetTooLargeError:
+            code, status_code = "asset_too_large", status.HTTP_413_CONTENT_TOO_LARGE
+        except AssetMetadataError:
+            code, status_code = "invalid_asset_metadata", status.HTTP_422_UNPROCESSABLE_CONTENT
+        except AssetStorageError:
+            code, status_code = "asset_storage_failed", status.HTTP_500_INTERNAL_SERVER_ERROR
+        except Exception:
+            code, status_code = "asset_storage_failed", status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(status_code=status_code, detail={"code": code}) from None
 
     @application.post(
         "/api/v1/runs",

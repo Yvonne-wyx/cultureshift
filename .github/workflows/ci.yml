@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CULTURESHIFT_CAPABILITY_SECRET: "ci-fixture-secret-not-for-production"
+      CULTURESHIFT_TEMP_ASSET_DIR: ".cultureshift/assets"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

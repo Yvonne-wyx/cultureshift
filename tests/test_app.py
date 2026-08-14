@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cultureshift.app import create_app
+from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
 from cultureshift.repository import SQLiteProjectRunRepository
 
@@ -13,7 +14,16 @@ from cultureshift.repository import SQLiteProjectRunRepository
 def make_client(tmp_path) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
-    return TestClient(create_app(repository=repository, token_service=tokens)), repository
+    return (
+        TestClient(
+            create_app(
+                repository=repository,
+                token_service=tokens,
+                asset_store=TemporaryAssetStore(tmp_path / "assets"),
+            )
+        ),
+        repository,
+    )
 
 
 def test_health_contracts_and_openapi(tmp_path) -> None:
@@ -279,3 +289,90 @@ def test_default_app_requires_non_secret_environment_configuration(monkeypatch) 
     with pytest.raises(RuntimeError, match="32 UTF-8 bytes") as short:
         create_app()
     assert private_value not in str(short.value)
+
+    monkeypatch.setenv("CULTURESHIFT_CAPABILITY_SECRET", "s" * 32)
+    monkeypatch.delenv("CULTURESHIFT_TEMP_ASSET_DIR", raising=False)
+    with pytest.raises(RuntimeError, match="CULTURESHIFT_TEMP_ASSET_DIR"):
+        create_app()
+
+
+def test_upload_asset_returns_public_metadata_and_private_file(tmp_path) -> None:
+    client, _ = make_client(tmp_path)
+    content = b"\x89PNG\r\n\x1a\nfixture"
+    with client:
+        response = client.post(
+            "/api/v1/assets",
+            content=content,
+            headers={
+                "Content-Type": "image/png",
+                "X-Provenance-Ref": "fixture:user-upload/day6",
+                "X-Rights-Ref": "rights:authorized-upload/day6",
+            },
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["asset"]["kind"] == "source_ad"
+    assert body["asset"]["media_type"] == "image/png"
+    assert body["size_bytes"] == len(content)
+    assert "expires_at" in body["asset"]
+    assert response.text.find(content.hex()) == -1
+    stored = list((tmp_path / "assets").glob("*.png"))
+    assert len(stored) == 1
+    assert stored[0].read_bytes() == content
+
+
+@pytest.mark.parametrize(
+    ("content", "media_type", "code"),
+    [
+        (b"", "image/png", "asset_empty"),
+        (b"<svg>private</svg>", "image/svg+xml", "unsupported_asset_type"),
+        (b"\x89PNG\r\n\x1a\nprivate", "image/jpeg", "asset_type_mismatch"),
+    ],
+)
+def test_upload_asset_fails_closed_without_echo(tmp_path, content, media_type, code) -> None:
+    client, _ = make_client(tmp_path)
+    private_reference = r"C:\private\source.png"
+    with client:
+        response = client.post(
+            "/api/v1/assets",
+            content=content,
+            headers={
+                "Content-Type": media_type,
+                "X-Provenance-Ref": "fixture:user-upload/day6",
+                "X-Rights-Ref": "rights:authorized-upload/day6",
+                "X-Original-Filename": private_reference,
+            },
+        )
+
+    assert response.status_code in {400, 413, 415, 422}
+    assert response.json() == {"detail": {"code": code}}
+    assert private_reference not in response.text
+    assert "private" not in response.text
+
+
+def test_upload_asset_hides_unexpected_storage_failure(tmp_path) -> None:
+    class FailingStore(TemporaryAssetStore):
+        def store(self, *args, **kwargs):
+            raise RuntimeError("private storage detail")
+
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    application = create_app(
+        repository=repository,
+        token_service=tokens,
+        asset_store=FailingStore(tmp_path / "assets"),
+    )
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/v1/assets",
+            content=b"\x89PNG\r\n\x1a\nfixture",
+            headers={
+                "Content-Type": "image/png",
+                "X-Provenance-Ref": "fixture:user-upload/day6",
+                "X-Rights-Ref": "rights:authorized-upload/day6",
+            },
+        )
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "asset_storage_failed"}}
+    assert "private storage detail" not in response.text

@@ -143,6 +143,30 @@
       "title": "AssetRef",
       "type": "object"
     },
+    "AssetUploaded": {
+      "additionalProperties": false,
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/SourceAdAssetRef"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "size_bytes": {
+          "maximum": 10485760,
+          "minimum": 1,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "asset",
+        "size_bytes",
+        "created_at"
+      ],
+      "title": "AssetUploaded",
+      "type": "object"
+    },
     "BrandLock": {
       "additionalProperties": false,
       "properties": {
@@ -842,6 +866,9 @@
     "asset_ref": {
       "$ref": "#/$defs/AssetRef"
     },
+    "asset_uploaded": {
+      "$ref": "#/$defs/AssetUploaded"
+    },
     "brand_lock": {
       "$ref": "#/$defs/BrandLock"
     },
@@ -884,6 +911,7 @@
   },
   "required": [
     "asset_ref",
+    "asset_uploaded",
     "cultural_hypothesis",
     "brand_lock",
     "ad_analysis",
