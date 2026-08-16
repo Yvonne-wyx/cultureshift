@@ -1,0 +1,107 @@
+{
+  "accessed_at": "2026-08-16",
+  "decision": "no_live_provider_approved",
+  "providers": [
+    {
+      "provider": "OpenAI API",
+      "dimensions": {
+        "training_use": {
+          "verified": "API data is not used to train models by default.",
+          "inference": "A privacy owner must still approve the selected endpoint and account controls."
+        },
+        "retention": {
+          "verified": "Default abuse-monitoring logs may be retained for up to 30 days; eligible controls can change retention behavior.",
+          "inference": "Zero-retention eligibility and configuration must be verified before any live use."
+        },
+        "regional_storage_and_processing": {
+          "verified": "Regional data controls depend on eligible projects, endpoints, and configured regions.",
+          "inference": "The required UK-facing processing region is unresolved."
+        },
+        "public_pricing_unit": {
+          "verified": "Public API pricing varies by model and input/output modality or token unit.",
+          "inference": "Refresh the dated price and estimate fixture-equivalent cost before procurement."
+        },
+        "structured_multimodal_suitability": {
+          "verified": "The API publishes models and endpoints that accept image inputs and structured outputs.",
+          "inference": "Schema adherence and safety behavior require a separate bounded evaluation."
+        },
+        "unresolved_approval_requirements": {
+          "verified": "Retention and regional controls have account and endpoint conditions.",
+          "inference": "Privacy owner, region, retention, budget, price refresh, and implementation approval are outstanding."
+        }
+      },
+      "sources": [
+        "https://platform.openai.com/docs/models/default-usage-policies-by-endpoint",
+        "https://openai.com/api/pricing/"
+      ]
+    },
+    {
+      "provider": "Google Vertex AI",
+      "dimensions": {
+        "training_use": {
+          "verified": "Google states that customer data is not used to train or fine-tune models without permission or instruction.",
+          "inference": "Project and organization controls still need named-owner review."
+        },
+        "retention": {
+          "verified": "Vertex AI documents zero-data-retention configuration, exceptions, abuse monitoring, and in-memory caching behavior.",
+          "inference": "Every selected feature must be checked against the zero-retention documentation."
+        },
+        "regional_storage_and_processing": {
+          "verified": "Vertex AI publishes model availability by global, multi-region, and regional location.",
+          "inference": "The acceptable storage and processing location remains a procurement requirement."
+        },
+        "public_pricing_unit": {
+          "verified": "Public generative-AI pricing varies by model, modality, token, image, or other documented unit.",
+          "inference": "Refresh pricing and estimate the bounded static-ad workload before procurement."
+        },
+        "structured_multimodal_suitability": {
+          "verified": "Vertex AI offers multimodal generative models and structured-output capabilities.",
+          "inference": "A separate fixture evaluation must measure schema reliability and safety."
+        },
+        "unresolved_approval_requirements": {
+          "verified": "Location, retention, and feature behavior vary by model and configuration.",
+          "inference": "Privacy owner, region, retention, budget, price refresh, and implementation approval are outstanding."
+        }
+      },
+      "sources": [
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/vertex-ai-zero-data-retention",
+        "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations",
+        "https://cloud.google.com/vertex-ai/generative-ai/pricing"
+      ]
+    },
+    {
+      "provider": "Amazon Bedrock",
+      "dimensions": {
+        "training_use": {
+          "verified": "AWS states that model providers do not receive customer prompts and completions and cannot use them to train models.",
+          "inference": "AWS account controls and the selected model provider still require review."
+        },
+        "retention": {
+          "verified": "AWS publishes Bedrock data-protection guidance and service-specific handling considerations.",
+          "inference": "The exact feature path must be verified against retention requirements before live use."
+        },
+        "regional_storage_and_processing": {
+          "verified": "Bedrock publishes model support and compatibility by AWS Region.",
+          "inference": "An approved region and model combination has not been selected."
+        },
+        "public_pricing_unit": {
+          "verified": "Public Bedrock pricing varies by provider, model, modality, throughput option, and region.",
+          "inference": "Refresh pricing and estimate the bounded static-ad workload before procurement."
+        },
+        "structured_multimodal_suitability": {
+          "verified": "Bedrock exposes multiple foundation models with capabilities that vary by provider and model.",
+          "inference": "A model-specific fixture evaluation must prove image and schema suitability."
+        },
+        "unresolved_approval_requirements": {
+          "verified": "Model availability, capability, and pricing vary by region and provider.",
+          "inference": "Privacy owner, region, retention, budget, price refresh, and implementation approval are outstanding."
+        }
+      },
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html",
+        "https://aws.amazon.com/bedrock/pricing/"
+      ]
+    }
+  ]
+}

@@ -11,10 +11,19 @@ from cultureshift.asset_storage import (
     AssetTypeMismatchError,
     TemporaryAssetStore,
     UnsupportedAssetTypeError,
+    detect_media_type,
 )
 
 PNG = b"\x89PNG\r\n\x1a\nfixture"
 JPEG = b"\xff\xd8\xfffixture\xff\xd9"
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [(PNG, "image/png"), (JPEG, "image/jpeg"), (b"not-an-image", None)],
+)
+def test_shared_media_detector_matches_upload_signatures(data, expected) -> None:
+    assert detect_media_type(data) == expected
 
 
 def test_store_writes_private_uuid_asset_atomically_with_public_metadata(tmp_path) -> None:

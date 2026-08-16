@@ -1,2 +1,6 @@
 # Fixture SVG bytes are hashed by the demo manifest; preserve LF checkouts.
 apps/web/public/fixtures/**/*.svg text eol=lf
+
+# Generated contract checks compare exact bytes; preserve deterministic LF.
+contracts/json-schema/*.json text eol=lf
+apps/web/src/generated/*.ts text eol=lf

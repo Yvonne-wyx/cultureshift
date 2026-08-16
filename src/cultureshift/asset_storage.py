@@ -59,7 +59,7 @@ class StoredAsset:
     created_at: datetime
 
 
-def _detected_media_type(data: bytes) -> str | None:
+def detect_media_type(data: bytes) -> str | None:
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9"):
@@ -112,7 +112,7 @@ class TemporaryAssetStore:
             raise AssetEmptyError("asset is empty")
         if len(data) > MAX_ASSET_BYTES:
             raise AssetTooLargeError("asset exceeds size limit")
-        detected = _detected_media_type(data)
+        detected = detect_media_type(data)
         if detected != declared_media_type:
             raise AssetTypeMismatchError("declared and detected asset types differ")
         try:

@@ -6,6 +6,7 @@ RUBRIC = ROOT / "docs/evaluation/rubric-v0.1.json"
 PROTOCOL = ROOT / "docs/evaluation/protocol-v0.1.md"
 RECRUITMENT_PACK = ROOT / "docs/evaluation/recruitment-pack-v0.1.md"
 RECRUITMENT_STATUS = ROOT / "docs/evaluation/recruitment-status.json"
+RECRUITMENT_HANDOFF = ROOT / "docs/evaluation/recruitment-handoff-v0.1.json"
 
 
 def test_frozen_rubric_has_bilateral_five_point_six_criterion_structure() -> None:
@@ -104,4 +105,24 @@ def test_recruitment_materials_are_public_safe_and_truthful() -> None:
             "protected_consent_vault",
         ],
         "public_claim": "Recruitment materials are ready; no outreach evidence is recorded.",
+    }
+
+
+def test_day8_recruitment_handoff_is_complete_but_inactive() -> None:
+    handoff = json.loads(RECRUITMENT_HANDOFF.read_text(encoding="utf-8"))
+
+    assert handoff == {
+        "protocol_version": "0.2",
+        "status": "pending_human_activation",
+        "opened_at": None,
+        "real_reviewers_confirmed": 0,
+        "requirements": [
+            "named_human_coordinator",
+            "approved_private_contact_route",
+            "protected_consent_vault",
+            "approved_privacy_and_retention_notice",
+            "withdrawal_and_deletion_owner",
+            "private_assignment_and_response_store",
+        ],
+        "public_claim": "Day 8 handoff is ready; no outreach evidence is recorded.",
     }

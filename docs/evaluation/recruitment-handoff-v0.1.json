@@ -1,0 +1,15 @@
+{
+  "protocol_version": "0.2",
+  "status": "pending_human_activation",
+  "opened_at": null,
+  "real_reviewers_confirmed": 0,
+  "requirements": [
+    "named_human_coordinator",
+    "approved_private_contact_route",
+    "protected_consent_vault",
+    "approved_privacy_and_retention_notice",
+    "withdrawal_and_deletion_owner",
+    "private_assignment_and_response_store"
+  ],
+  "public_claim": "Day 8 handoff is ready; no outreach evidence is recorded."
+}

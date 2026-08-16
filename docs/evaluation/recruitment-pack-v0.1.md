@@ -55,3 +55,20 @@ activation.
 - Confirm the assignment plan can produce at least three independent ratings per
   case without using nationality as a proxy.
 - Update only the non-identifying status after real outreach begins.
+
+## Day 8 human activation handoff
+
+The repository records readiness only. Before outreach, the human coordinator
+must complete all six controls recorded in
+`recruitment-handoff-v0.1.json`:
+
+- assign a named human coordinator;
+- approve a private contact route;
+- prepare a protected consent vault;
+- approve the privacy and retention notice;
+- assign a withdrawal and deletion owner;
+- prepare a private assignment and response store.
+
+No outreach starts and no personal information, consent, assignment, or response
+is committed to this repository. The public status remains
+`pending_human_activation` until a human-owned process is actually activated.
