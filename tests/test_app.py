@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from cultureshift.analysis_provider import FakeProvider, VisionProvider, VisionProviderResult
 from cultureshift.app import create_app
 from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
@@ -13,7 +14,10 @@ from cultureshift.repository import SQLiteProjectRunRepository
 
 
 def make_client(
-    tmp_path, *, upload_rate_limiter: FixedWindowRateLimiter | None = None
+    tmp_path,
+    *,
+    upload_rate_limiter: FixedWindowRateLimiter | None = None,
+    analysis_provider: VisionProvider | None = None,
 ) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
@@ -24,6 +28,7 @@ def make_client(
                 token_service=tokens,
                 asset_store=TemporaryAssetStore(tmp_path / "assets"),
                 upload_rate_limiter=upload_rate_limiter,
+                analysis_provider=analysis_provider,
             )
         ),
         repository,
@@ -136,6 +141,144 @@ def create_run(client: TestClient, valid_run_payload) -> tuple[str, str]:
     assert response.status_code == 201
     body = response.json()
     return body["run_id"], body["capability_token"]
+
+
+def create_uploaded_run(client: TestClient, valid_run_payload) -> tuple[str, str, dict]:
+    uploaded = client.post(
+        "/api/v1/assets",
+        content=b"\x89PNG\r\n\x1a\nfixture-day9",
+        headers={
+            "Content-Type": "image/png",
+            "X-Provenance-Ref": "fixture:user-upload/day9",
+            "X-Rights-Ref": "rights:authorized-upload/day9",
+        },
+    )
+    assert uploaded.status_code == 201
+    payload = {**valid_run_payload, "source_asset": uploaded.json()["asset"]}
+    run_id, token = create_run(client, payload)
+    return run_id, token, uploaded.json()
+
+
+@pytest.mark.parametrize(
+    ("direction", "detected_locale"),
+    [("china_to_uk", "zh-CN"), ("uk_to_china", "en-GB")],
+)
+def test_analyze_reaches_awaiting_brand_lock_for_bilateral_fixtures(
+    tmp_path, valid_run_payload, direction, detected_locale
+) -> None:
+    client, repository = make_client(tmp_path)
+    payload = {**valid_run_payload, "direction": direction}
+    with client:
+        run_id, token, _ = create_uploaded_run(client, payload)
+        response = client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "awaiting_brand_lock"
+    assert response.json()["analysis"]["detected_locale"] == detected_locale
+    assert response.json()["analysis"]["brand_lock"] == payload["brand_lock"]
+    assert repository.get(run_id).status.value == "awaiting_brand_lock"
+
+
+def test_analyze_is_idempotent_after_success(tmp_path, valid_run_payload) -> None:
+    provider = FakeProvider(VisionProviderResult(detected_locale="zh-CN"))
+    client, _ = make_client(tmp_path, analysis_provider=provider)
+    with client:
+        run_id, token, _ = create_uploaded_run(client, valid_run_payload)
+        first = client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        second = client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert first.status_code == second.status_code == 200
+    assert second.json()["analysis"] == first.json()["analysis"]
+    assert provider.call_count == 1
+
+
+def test_analyze_repairs_schema_once_and_fails_when_repair_is_invalid(
+    tmp_path, valid_run_payload
+) -> None:
+    repaired = FakeProvider(
+        {"detected_locale": "invalid"},
+        repair_result=VisionProviderResult(detected_locale="zh-CN"),
+    )
+    repaired_client, _ = make_client(tmp_path / "repaired", analysis_provider=repaired)
+    with repaired_client:
+        run_id, token, _ = create_uploaded_run(repaired_client, valid_run_payload)
+        success = repaired_client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        retry = repaired_client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert success.status_code == 200
+    assert success.json()["repair_attempted"] is True
+    assert retry.json() == success.json()
+    assert repaired.attempts == ("initial", "repair")
+
+    invalid = FakeProvider(
+        {"detected_locale": "invalid"},
+        repair_result={"detected_locale": "still-invalid"},
+    )
+    invalid_client, repository = make_client(tmp_path / "invalid", analysis_provider=invalid)
+    with invalid_client:
+        run_id, token, _ = create_uploaded_run(invalid_client, valid_run_payload)
+        failure = invalid_client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert failure.status_code == 502
+    assert failure.json() == {"detail": {"code": "provider_output_invalid"}}
+    assert invalid.attempts == ("initial", "repair")
+    assert repository.get(run_id).status.value == "failed"
+
+
+def test_analyze_requires_matching_analyze_capability(tmp_path, valid_run_payload) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, _, _ = create_uploaded_run(client, valid_run_payload)
+        read_only = CapabilityTokenService(
+            secret=b"a" * 32, audience="cultureshift-api"
+        ).issue(
+            subject=run_id,
+            capabilities={Capability.READ_PROJECT_RUN},
+            ttl=timedelta(minutes=5),
+        )
+        response = client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {read_only}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"code": "invalid_capability"}}
+    assert read_only not in response.text
+
+
+def test_analyze_blocks_deleted_asset_without_echo(tmp_path, valid_run_payload) -> None:
+    client, repository = make_client(tmp_path)
+    with client:
+        run_id, token, uploaded = create_uploaded_run(client, valid_run_payload)
+        client.delete(
+            f"/api/v1/assets/{uploaded['asset']['asset_id']}",
+            headers={"Authorization": f"Bearer {uploaded['delete_capability_token']}"},
+        )
+        response = client.post(
+            f"/api/v1/runs/{run_id}/analyze",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "asset_lifecycle_closed"}}
+    assert uploaded["delete_capability_token"] not in response.text
+    assert repository.get(run_id).status.value == "blocked"
 
 
 def test_get_run_returns_public_snapshot_for_read_capability(tmp_path, valid_run_payload) -> None:

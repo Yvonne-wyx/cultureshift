@@ -114,6 +114,7 @@ class AssetKind(StrEnum):
 class RunStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    AWAITING_BRAND_LOCK = "awaiting_brand_lock"
     BLOCKED = "blocked"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -274,6 +275,14 @@ class RunSnapshot(ContractModel):
     updated_at: UtcDatetime
 
 
+class AnalysisCompleted(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.AWAITING_BRAND_LOCK]
+    analysis: AdAnalysis
+    repair_attempted: bool
+    completed_at: UtcDatetime
+
+
 class JobAccepted(ContractModel):
     run_id: UUID
     status: RunStatus
@@ -337,6 +346,7 @@ class ContractRegistry(ContractModel):
     run_create: RunCreate
     run_created: RunCreated
     run_snapshot: RunSnapshot
+    analysis_completed: AnalysisCompleted
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
     retry_request: RetryRequest

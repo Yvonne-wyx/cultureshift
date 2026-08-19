@@ -52,10 +52,13 @@ def test_project_run_status_transition_updates_timestamp() -> None:
         (ProjectRunStatus.PENDING, ProjectRunStatus.BLOCKED),
         (ProjectRunStatus.PENDING, ProjectRunStatus.FAILED),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.BLOCKED),
+        (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.AWAITING_BRAND_LOCK),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.COMPLETED),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED),
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.IN_PROGRESS),
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.FAILED),
+        (ProjectRunStatus.AWAITING_BRAND_LOCK, ProjectRunStatus.IN_PROGRESS),
+        (ProjectRunStatus.AWAITING_BRAND_LOCK, ProjectRunStatus.FAILED),
     ],
 )
 def test_project_run_accepts_legal_status_transitions(
@@ -70,6 +73,7 @@ def test_project_run_accepts_legal_status_transitions(
     ("current", "target"),
     [
         (ProjectRunStatus.PENDING, ProjectRunStatus.COMPLETED),
+        (ProjectRunStatus.PENDING, ProjectRunStatus.AWAITING_BRAND_LOCK),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.PENDING),
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.COMPLETED),
         (ProjectRunStatus.COMPLETED, ProjectRunStatus.IN_PROGRESS),

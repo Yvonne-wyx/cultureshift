@@ -11,6 +11,16 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from cultureshift.analysis_pipeline import (
+    AnalysisErrorCode,
+    AnalysisPipeline,
+    AnalysisPipelineError,
+)
+from cultureshift.analysis_provider import (
+    FixtureProvider,
+    VisionAnalysisRequest,
+    VisionProvider,
+)
 from cultureshift.asset_storage import (
     MAX_ASSET_BYTES,
     AssetEmptyError,
@@ -27,8 +37,15 @@ from cultureshift.capability_tokens import (
     CapabilityTokenError,
     CapabilityTokenService,
 )
-from cultureshift.contracts import AssetUploaded, RunCreate, RunCreated, RunSnapshot, RunStatus
-from cultureshift.domain import ProjectRun
+from cultureshift.contracts import (
+    AnalysisCompleted,
+    AssetUploaded,
+    RunCreate,
+    RunCreated,
+    RunSnapshot,
+    RunStatus,
+)
+from cultureshift.domain import ProjectRun, ProjectRunStatus
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
 
@@ -56,6 +73,7 @@ def create_app(
     token_service: CapabilityTokenService | None = None,
     asset_store: TemporaryAssetStore | None = None,
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
+    analysis_provider: VisionProvider | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -63,6 +81,7 @@ def create_app(
     upload_limit = upload_rate_limiter or FixedWindowRateLimiter(
         limit=10, window=timedelta(minutes=1)
     )
+    provider = analysis_provider or FixtureProvider()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -195,7 +214,10 @@ def create_app(
             run = ProjectRun(direction=request.direction)
             token = tokens.issue(
                 subject=str(run.id),
-                capabilities={Capability.READ_PROJECT_RUN},
+                capabilities={
+                    Capability.READ_PROJECT_RUN,
+                    Capability.ANALYZE_PROJECT_RUN,
+                },
                 ttl=timedelta(minutes=15),
             )
             response = RunCreated(
@@ -204,7 +226,7 @@ def create_app(
                 capability_token=token,
                 created_at=run.created_at,
             )
-            runs.create(run)
+            runs.create(run, request=request)
             return response
         except Exception:
             raise HTTPException(
@@ -254,6 +276,144 @@ def create_app(
             warning_codes=run.warning_codes,
             created_at=run.created_at,
             updated_at=run.updated_at,
+        )
+
+    @application.post(
+        "/api/v1/runs/{run_id}/analyze",
+        response_model=AnalysisCompleted,
+        tags=["runs"],
+    )
+    def analyze_run(run_id: UUID, request: Request) -> AnalysisCompleted:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.ANALYZE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        try:
+            run = runs.get(run_id)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+
+        if run.status is ProjectRunStatus.AWAITING_BRAND_LOCK:
+            try:
+                existing = runs.get_analysis(run_id)
+            except Exception:
+                existing = None
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail={"code": "analysis_state_invalid"},
+                )
+            return AnalysisCompleted(
+                run_id=run.id,
+                status=RunStatus.AWAITING_BRAND_LOCK,
+                analysis=existing,
+                repair_attempted=runs.get_repair_attempted(run_id),
+                completed_at=run.updated_at,
+            )
+        if run.status is not ProjectRunStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            )
+
+        try:
+            stored_request = runs.get_request(run_id)
+            claimed = runs.claim_analysis(run_id)
+            if claimed is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"code": "invalid_run_state"},
+                )
+            loaded = assets.load(stored_request.source_asset.asset_id)
+            if loaded.asset != stored_request.source_asset:
+                raise AssetStorageError("temporary asset metadata mismatch")
+        except AssetLifecycleClosedError:
+            runs.record_failure(
+                run_id,
+                ProjectRunStatus.BLOCKED,
+                AnalysisErrorCode.ASSET_CLOSED.value,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": AnalysisErrorCode.ASSET_CLOSED.value},
+            ) from None
+        except (AssetStorageError, ProjectRunNotFoundError):
+            runs.record_failure(run_id, ProjectRunStatus.BLOCKED, "asset_validation_failed")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "asset_validation_failed"},
+            ) from None
+
+        analysis_request = VisionAnalysisRequest(
+            content=loaded.content,
+            source_asset=stored_request.source_asset,
+            direction=stored_request.direction,
+            brand_lock=stored_request.brand_lock,
+            product_category=stored_request.product_category,
+            creative_format=stored_request.creative_format,
+        )
+        try:
+            outcome = AnalysisPipeline(provider).analyze(analysis_request)
+        except AnalysisPipelineError as error:
+            blocked_codes = {
+                AnalysisErrorCode.INVALID_INPUT,
+                AnalysisErrorCode.UNSUPPORTED_SCOPE,
+                AnalysisErrorCode.ASSET_CLOSED,
+                AnalysisErrorCode.INSTRUCTION_LIKE_CONTENT,
+                AnalysisErrorCode.PROHIBITED_CONTENT,
+                AnalysisErrorCode.UNSAFE_HYPOTHESIS,
+            }
+            failed_status = (
+                ProjectRunStatus.BLOCKED
+                if error.code in blocked_codes
+                else ProjectRunStatus.FAILED
+            )
+            runs.record_failure(run_id, failed_status, error.code.value)
+            status_code = (
+                status.HTTP_422_UNPROCESSABLE_CONTENT
+                if failed_status is ProjectRunStatus.BLOCKED
+                else status.HTTP_502_BAD_GATEWAY
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": error.code.value},
+            ) from None
+
+        try:
+            completed = runs.complete_analysis(
+                run_id,
+                outcome.analysis,
+                repair_attempted=outcome.repair_attempted,
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "analysis_persistence_failed"},
+            ) from None
+        return AnalysisCompleted(
+            run_id=completed.id,
+            status=RunStatus.AWAITING_BRAND_LOCK,
+            analysis=outcome.analysis,
+            repair_attempted=outcome.repair_attempted,
+            completed_at=completed.updated_at,
         )
 
     return application

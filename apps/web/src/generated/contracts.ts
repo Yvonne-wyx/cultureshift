@@ -238,6 +238,9 @@ export type Body = string;
 export type CtaActionMeaning1 = string;
 export type CtaLabel = string;
 export type Headline = string;
+export type RepairAttempted = boolean;
+export type RunId = string;
+export type Status = "awaiting_brand_lock";
 export type AssetId1 = string;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -268,7 +271,7 @@ export type RequiresHumanReview = boolean;
 export type Warnings1 = string[];
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type ExportResultVersion = number;
-export type RunId = string;
+export type RunId1 = string;
 /**
  * @maxItems 32
  */
@@ -328,13 +331,13 @@ export type RequestedChanges =
       string,
       string
     ];
-export type RunId1 = string;
 export type RunId2 = string;
+export type RunId3 = string;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "RunStatus".
  */
-export type RunStatus = "pending" | "in_progress" | "blocked" | "completed" | "failed";
+export type RunStatus = "pending" | "in_progress" | "awaiting_brand_lock" | "blocked" | "completed" | "failed";
 export type CreativeFormat = "static_ad";
 export type FixtureExecutionMode = "fixture";
 export type ProductCategory = "ai_software" | "ai_application";
@@ -343,16 +346,16 @@ export type Version = number;
  * @maxItems 64
  */
 export type ResultVersions = ResultVersion[];
-export type RunId3 = string;
+export type RunId4 = string;
 /**
  * @maxItems 32
  */
 export type WarningCodes = string[];
 export type ReasonCategory = "validation" | "generation" | "review";
-export type RunId4 = string;
-export type CapabilityToken = string;
 export type RunId5 = string;
+export type CapabilityToken = string;
 export type RunId6 = string;
+export type RunId7 = string;
 /**
  * @maxItems 32
  */
@@ -366,6 +369,7 @@ export type ExecutionMode = "fixture" | "live";
 export interface ContractRegistry {
   ad_analysis: AdAnalysis;
   ad_copy: AdCopy;
+  analysis_completed: AnalysisCompleted;
   asset_ref: AssetRef;
   asset_uploaded: AssetUploaded;
   brand_lock: BrandLock;
@@ -447,6 +451,17 @@ export interface AdCopy {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "AnalysisCompleted".
+ */
+export interface AnalysisCompleted {
+  analysis: AdAnalysis;
+  completed_at: UtcDatetime;
+  repair_attempted: RepairAttempted;
+  run_id: RunId;
+  status: Status;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "AssetRef".
  */
 export interface AssetRef {
@@ -498,7 +513,7 @@ export interface ExportSummary {
   approval_status: ApprovalStatus;
   exported_at: UtcDatetime;
   result_version: ExportResultVersion;
-  run_id: RunId;
+  run_id: RunId1;
   warnings?: Warnings2;
 }
 /**
@@ -508,7 +523,7 @@ export interface ExportSummary {
 export interface FeedbackRequest {
   feedback: Feedback;
   requested_changes: RequestedChanges;
-  run_id: RunId1;
+  run_id: RunId2;
   submitted_at: UtcDatetime;
 }
 /**
@@ -517,7 +532,7 @@ export interface FeedbackRequest {
  */
 export interface JobAccepted {
   accepted_at: UtcDatetime;
-  run_id: RunId2;
+  run_id: RunId3;
   status: RunStatus;
 }
 /**
@@ -528,7 +543,7 @@ export interface ProjectRunContract {
   created_at: UtcDatetime;
   request: RunCreate;
   result_versions?: ResultVersions;
-  run_id: RunId3;
+  run_id: RunId4;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes;
@@ -564,7 +579,7 @@ export interface ResultVersion {
  */
 export interface RetryRequest {
   reason_category: ReasonCategory;
-  run_id: RunId4;
+  run_id: RunId5;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -573,7 +588,7 @@ export interface RetryRequest {
 export interface RunCreated {
   capability_token: CapabilityToken;
   created_at: UtcDatetime;
-  run_id: RunId5;
+  run_id: RunId6;
   status: RunStatus;
 }
 /**
@@ -583,7 +598,7 @@ export interface RunCreated {
 export interface RunSnapshot {
   created_at: UtcDatetime;
   direction: LocalizationDirection;
-  run_id: RunId6;
+  run_id: RunId7;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes1;

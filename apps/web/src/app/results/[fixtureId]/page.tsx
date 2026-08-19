@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BrandLockPreparation } from "../../../components/brand-lock-preparation";
 import { listFixtureIds, loadFixture } from "../../../fixtures/fixture-loader";
 import type { FixtureId } from "../../../fixtures/types";
 import { composeFixtureResult } from "../../../results/compose-fixture-result";
@@ -23,7 +24,8 @@ export default async function ResultPage({
 }) {
   const { fixtureId } = await params;
   if (!isFixtureId(fixtureId)) notFound();
-  const result = composeFixtureResult(loadFixture(fixtureId));
+  const fixture = loadFixture(fixtureId);
+  const result = composeFixtureResult(fixture);
 
   return (
     <main className={styles.page}>
@@ -71,6 +73,8 @@ export default async function ResultPage({
           <div><dt>Localizable fields</dt><dd><ul>{result.brand_lock.localizable_fields.map((v) => <li key={v}><code>{v}</code></li>)}</ul></dd></div>
         </dl>
       </section>
+
+      <BrandLockPreparation fixture={fixture} />
 
       <section className={styles.details} aria-labelledby="traceability-heading">
         <h2 id="traceability-heading">Traceability</h2>

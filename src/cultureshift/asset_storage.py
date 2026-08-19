@@ -14,6 +14,7 @@ from pydantic import TypeAdapter, ValidationError
 from cultureshift.contracts import AssetKind, PublicReference, SourceAdAssetRef
 
 MAX_ASSET_BYTES = 10 * 1024 * 1024
+MAX_METADATA_BYTES = 64 * 1024
 ASSET_TTL = timedelta(hours=24)
 TOMBSTONE_TTL = timedelta(days=7)
 _EXTENSIONS = {"image/png": "png", "image/jpeg": "jpg"}
@@ -59,6 +60,12 @@ class StoredAsset:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class LoadedAsset:
+    asset: SourceAdAssetRef
+    content: bytes
+
+
 def detect_media_type(data: bytes) -> str | None:
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
@@ -95,6 +102,17 @@ class TemporaryAssetStore:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+
+    @staticmethod
+    def _read_bounded(path: Path, limit: int) -> bytes:
+        try:
+            with path.open("rb") as handle:
+                content = handle.read(limit + 1)
+        except OSError as error:
+            raise AssetStorageError("temporary asset read failed") from error
+        if len(content) > limit:
+            raise AssetStorageError("temporary asset read failed")
+        return content
 
     def store(
         self,
@@ -175,6 +193,54 @@ class TemporaryAssetStore:
                     path.unlink(missing_ok=True)
                 raise AssetStorageError("temporary asset write failed") from error
         return stored
+
+    def load(self, asset_id: UUID, *, now: datetime | None = None) -> LoadedAsset:
+        loaded_at = _require_utc(now or datetime.now(UTC))
+        metadata_path = self._root / f"{asset_id}.meta.json"
+        with self._lock:
+            if self._is_closed(asset_id):
+                raise AssetLifecycleClosedError("asset lifecycle is closed")
+            try:
+                metadata_bytes = self._read_bounded(metadata_path, MAX_METADATA_BYTES)
+                metadata = json.loads(metadata_bytes.decode("utf-8"))
+                asset = SourceAdAssetRef.model_validate(metadata["asset"])
+                size_bytes = metadata["size_bytes"]
+                created_at = _require_utc(datetime.fromisoformat(metadata["created_at"]))
+                if (
+                    asset.asset_id != asset_id
+                    or not isinstance(size_bytes, int)
+                    or isinstance(size_bytes, bool)
+                    or size_bytes < 1
+                    or size_bytes > MAX_ASSET_BYTES
+                    or created_at > loaded_at
+                ):
+                    raise ValueError("invalid metadata")
+                if asset.expires_at is not None and asset.expires_at <= loaded_at:
+                    raise AssetLifecycleClosedError("asset lifecycle is closed")
+                extension = _EXTENSIONS[asset.media_type]
+                asset_path = self._root / f"{asset_id}.{extension}"
+                if asset_path.stat().st_size != size_bytes:
+                    raise AssetStorageError("temporary asset read failed")
+                content = self._read_bounded(asset_path, MAX_ASSET_BYTES)
+            except AssetLifecycleClosedError:
+                raise
+            except (
+                OSError,
+                KeyError,
+                TypeError,
+                UnicodeDecodeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as error:
+                raise AssetStorageError("temporary asset read failed") from error
+
+            if (
+                len(content) != size_bytes
+                or detect_media_type(content) != asset.media_type
+                or hashlib.sha256(content).hexdigest() != asset.sha256
+            ):
+                raise AssetStorageError("temporary asset integrity check failed")
+        return LoadedAsset(asset=asset, content=content)
 
     def delete(
         self,

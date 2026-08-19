@@ -12,6 +12,7 @@ from typing import Any
 
 class Capability(StrEnum):
     READ_PROJECT_RUN = "project_run:read"
+    ANALYZE_PROJECT_RUN = "project_run:analyze"
     UPDATE_PROJECT_RUN = "project_run:update"
     DELETE_ASSET = "asset:delete"
 

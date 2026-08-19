@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from cultureshift.contracts import (
     AdAnalysis,
+    AnalysisCompleted,
     AssetKind,
     AssetRef,
     BrandLock,
@@ -56,6 +57,28 @@ def test_contract_enums_have_stable_public_values() -> None:
     assert [item.value for item in ExecutionMode] == ["fixture", "live"]
     assert AssetKind.RENDERED_AD.value == "rendered_ad"
     assert RunStatus.PENDING.value == "pending"
+
+
+def test_analysis_completed_requires_awaiting_brand_lock(
+    valid_run_payload: dict[str, object],
+) -> None:
+    request = RunCreate.model_validate(valid_run_payload)
+    analysis = AdAnalysis(
+        source_asset=request.source_asset,
+        detected_locale="zh-CN",
+        brand_lock=request.brand_lock,
+    )
+    completed = AnalysisCompleted(
+        run_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        status="awaiting_brand_lock",
+        analysis=analysis,
+        repair_attempted=False,
+        completed_at=datetime(2026, 8, 19, tzinfo=UTC),
+    )
+
+    assert completed.status is RunStatus.AWAITING_BRAND_LOCK
+    with pytest.raises(ValidationError):
+        AnalysisCompleted.model_validate({**completed.model_dump(), "status": "completed"})
 
 
 def test_asset_ref_is_serializable_and_rejects_local_paths() -> None:

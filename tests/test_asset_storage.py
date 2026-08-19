@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -7,6 +8,7 @@ from cultureshift.asset_storage import (
     AssetEmptyError,
     AssetLifecycleClosedError,
     AssetMetadataError,
+    AssetStorageError,
     AssetTooLargeError,
     AssetTypeMismatchError,
     TemporaryAssetStore,
@@ -48,6 +50,95 @@ def test_store_writes_private_uuid_asset_atomically_with_public_metadata(tmp_pat
     assert asset_path.read_bytes() == PNG
     assert metadata_path.is_file()
     assert not list(tmp_path.glob("*.part"))
+
+
+def test_load_verifies_public_metadata_and_private_bytes(tmp_path) -> None:
+    store = TemporaryAssetStore(tmp_path)
+    created_at = datetime(2026, 8, 19, 8, 0, tzinfo=UTC)
+    uploaded = store.store(
+        PNG,
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day9",
+        rights_ref="rights:authorized-upload/day9",
+        now=created_at,
+    )
+
+    loaded = store.load(uploaded.asset.asset_id, now=created_at + timedelta(hours=1))
+
+    assert loaded.asset == uploaded.asset
+    assert loaded.content == PNG
+
+
+def test_load_rejects_expired_or_deleted_asset(tmp_path) -> None:
+    store = TemporaryAssetStore(tmp_path)
+    created_at = datetime(2026, 8, 19, 8, 0, tzinfo=UTC)
+    uploaded = store.store(
+        PNG,
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day9",
+        rights_ref="rights:authorized-upload/day9",
+        now=created_at,
+    )
+
+    with pytest.raises(AssetLifecycleClosedError, match="asset lifecycle is closed"):
+        store.load(uploaded.asset.asset_id, now=created_at + timedelta(hours=24))
+
+    store.delete(uploaded.asset.asset_id, now=created_at + timedelta(hours=1))
+    with pytest.raises(AssetLifecycleClosedError, match="asset lifecycle is closed"):
+        store.load(uploaded.asset.asset_id, now=created_at + timedelta(hours=2))
+
+
+def test_load_rejects_corruption_without_exposing_private_data(tmp_path) -> None:
+    store = TemporaryAssetStore(tmp_path)
+    uploaded = store.store(
+        PNG,
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day9",
+        rights_ref="rights:authorized-upload/day9",
+    )
+    private_path = tmp_path / f"{uploaded.asset.asset_id}.png"
+    private_path.write_bytes(b"private-corruption-marker")
+
+    with pytest.raises(AssetStorageError) as caught:
+        store.load(uploaded.asset.asset_id)
+
+    surface = f"{caught.value!r} {caught.value}"
+    assert "private-corruption-marker" not in surface
+    assert str(private_path) not in surface
+
+
+def test_load_uses_bounded_stream_reads(tmp_path, monkeypatch) -> None:
+    store = TemporaryAssetStore(tmp_path)
+    uploaded = store.store(
+        PNG,
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day9",
+        rights_ref="rights:authorized-upload/day9",
+    )
+
+    def reject_unbounded_read(*_args, **_kwargs):
+        raise AssertionError("unbounded path read")
+
+    monkeypatch.setattr(Path, "read_bytes", reject_unbounded_read)
+    monkeypatch.setattr(Path, "read_text", reject_unbounded_read)
+
+    assert store.load(uploaded.asset.asset_id).content == PNG
+
+
+def test_load_rejects_oversized_private_file_before_decoding(tmp_path) -> None:
+    store = TemporaryAssetStore(tmp_path)
+    uploaded = store.store(
+        PNG,
+        declared_media_type="image/png",
+        provenance_ref="fixture:user-upload/day9",
+        rights_ref="rights:authorized-upload/day9",
+    )
+    private_path = tmp_path / f"{uploaded.asset.asset_id}.png"
+    with private_path.open("r+b") as handle:
+        handle.truncate(MAX_ASSET_BYTES + 1)
+
+    with pytest.raises(AssetStorageError, match="temporary asset read failed"):
+        store.load(uploaded.asset.asset_id)
 
 
 @pytest.mark.parametrize(

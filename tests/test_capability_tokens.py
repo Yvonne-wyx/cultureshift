@@ -29,6 +29,21 @@ def test_issue_and_verify_scoped_capability_token() -> None:
     assert claims.capabilities == frozenset({Capability.READ_PROJECT_RUN})
 
 
+def test_run_token_can_carry_distinct_read_and_analyze_capabilities() -> None:
+    service = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    token = service.issue(
+        subject="run-123",
+        capabilities={Capability.READ_PROJECT_RUN, Capability.ANALYZE_PROJECT_RUN},
+        ttl=timedelta(minutes=5),
+    )
+
+    claims = service.verify(token, required=Capability.ANALYZE_PROJECT_RUN)
+
+    assert claims.capabilities == frozenset(
+        {Capability.READ_PROJECT_RUN, Capability.ANALYZE_PROJECT_RUN}
+    )
+
+
 @pytest.mark.parametrize(
     "mutation", ["tamper", "wrong-audience", "wrong-secret", "wrong-scope", "expired"]
 )

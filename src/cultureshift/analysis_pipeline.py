@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -31,6 +32,12 @@ class AnalysisPipelineError(RuntimeError):
     def __init__(self, code: AnalysisErrorCode) -> None:
         self.code = code
         super().__init__(code.value)
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisOutcome:
+    analysis: AdAnalysis
+    repair_attempted: bool
 
 
 class SafetyGate:
@@ -84,23 +91,45 @@ class AnalysisPipeline:
         self._gate = gate or SafetyGate()
         self._now = now or (lambda: datetime.now(UTC))
 
-    def analyze(self, request: VisionAnalysisRequest) -> AdAnalysis:
-        self._gate.validate_request(request, now=self._now())
+    def _call_provider(
+        self, request: VisionAnalysisRequest, *, attempt: str
+    ) -> VisionProviderResult | object:
         try:
-            raw_result = self._provider.analyze(request)
+            return self._provider.analyze(request, attempt=attempt)
         except Exception:
             raise AnalysisPipelineError(AnalysisErrorCode.PROVIDER_FAILED) from None
+
+    @staticmethod
+    def _validate_provider_result(raw_result: object) -> VisionProviderResult:
         try:
-            result = VisionProviderResult.model_validate(raw_result)
+            return VisionProviderResult.model_validate(raw_result)
         except (TypeError, ValidationError):
             raise AnalysisPipelineError(
                 AnalysisErrorCode.PROVIDER_OUTPUT_INVALID
             ) from None
+
+    def analyze(self, request: VisionAnalysisRequest) -> AnalysisOutcome:
+        self._gate.validate_request(request, now=self._now())
+        try:
+            result = self._validate_provider_result(
+                self._call_provider(request, attempt="initial")
+            )
+            repair_attempted = False
+        except AnalysisPipelineError as error:
+            if error.code is not AnalysisErrorCode.PROVIDER_OUTPUT_INVALID:
+                raise
+            repair_attempted = True
+            result = self._validate_provider_result(
+                self._call_provider(request, attempt="repair")
+            )
         self._gate.validate_result(request, result)
-        return AdAnalysis(
-            source_asset=request.source_asset,
-            detected_locale=result.detected_locale,
-            brand_lock=request.brand_lock,
-            hypotheses=result.hypotheses,
-            warnings=result.warnings,
+        return AnalysisOutcome(
+            analysis=AdAnalysis(
+                source_asset=request.source_asset,
+                detected_locale=result.detected_locale,
+                brand_lock=request.brand_lock,
+                hypotheses=result.hypotheses,
+                warnings=result.warnings,
+            ),
+            repair_attempted=repair_attempted,
         )

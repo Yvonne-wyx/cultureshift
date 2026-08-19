@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import pytest
@@ -10,7 +10,7 @@ from cultureshift.analysis_pipeline import (
     AnalysisPipeline,
     AnalysisPipelineError,
 )
-from cultureshift.analysis_provider import VisionAnalysisRequest, VisionProviderResult
+from cultureshift.analysis_provider import FakeProvider, VisionAnalysisRequest, VisionProviderResult
 from cultureshift.contracts import CulturalHypothesis, RunCreate
 
 PNG = b"\x89PNG\r\n\x1a\nprivate-marker"
@@ -21,16 +21,29 @@ class RecordingProvider:
     def __init__(self, result: VisionProviderResult | dict[str, object]) -> None:
         self.result = result
         self.call_count = 0
+        self.attempts: list[str] = []
 
-    def analyze(self, request: VisionAnalysisRequest) -> VisionProviderResult | dict[str, object]:
+    def analyze(
+        self,
+        request: VisionAnalysisRequest,
+        *,
+        attempt: Literal["initial", "repair"] = "initial",
+    ) -> VisionProviderResult | dict[str, object]:
         del request
         self.call_count += 1
+        self.attempts.append(attempt)
         return self.result
 
 
 class FailingProvider:
-    def analyze(self, request: VisionAnalysisRequest) -> VisionProviderResult:
+    def analyze(
+        self,
+        request: VisionAnalysisRequest,
+        *,
+        attempt: Literal["initial", "repair"] = "initial",
+    ) -> VisionProviderResult:
         del request
+        del attempt
         raise RuntimeError("provider-private-message")
 
 
@@ -138,6 +151,51 @@ def test_provider_output_fails_closed(
     assert caught.value.code is expected_code
 
 
+def test_schema_invalid_output_is_repaired_once(
+    analysis_request: VisionAnalysisRequest,
+) -> None:
+    provider = FakeProvider(
+        {"detected_locale": "invalid"},
+        repair_result=_safe_result(),
+    )
+
+    outcome = AnalysisPipeline(provider, now=lambda: NOW).analyze(analysis_request)
+
+    assert outcome.repair_attempted is True
+    assert outcome.analysis.detected_locale == "zh-CN"
+    assert provider.attempts == ("initial", "repair")
+
+
+def test_schema_invalid_repair_is_exhausted_after_one_attempt(
+    analysis_request: VisionAnalysisRequest,
+) -> None:
+    provider = FakeProvider(
+        {"detected_locale": "invalid"},
+        repair_result={"detected_locale": "still-invalid"},
+    )
+
+    with pytest.raises(AnalysisPipelineError) as caught:
+        AnalysisPipeline(provider, now=lambda: NOW).analyze(analysis_request)
+
+    assert caught.value.code is AnalysisErrorCode.PROVIDER_OUTPUT_INVALID
+    assert provider.attempts == ("initial", "repair")
+
+
+def test_safety_failure_is_not_repaired(
+    analysis_request: VisionAnalysisRequest,
+) -> None:
+    provider = FakeProvider(
+        _safe_result(prohibited_content_detected=True),
+        repair_result=_safe_result(),
+    )
+
+    with pytest.raises(AnalysisPipelineError) as caught:
+        AnalysisPipeline(provider, now=lambda: NOW).analyze(analysis_request)
+
+    assert caught.value.code is AnalysisErrorCode.PROHIBITED_CONTENT
+    assert provider.attempts == ("initial",)
+
+
 def test_provider_exception_is_sanitized(
     analysis_request: VisionAnalysisRequest, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -158,10 +216,12 @@ def test_safe_success_preserves_trusted_request_objects(
     analysis_request: VisionAnalysisRequest,
 ) -> None:
     provider_result = _safe_result()
-    analysis = AnalysisPipeline(
+    outcome = AnalysisPipeline(
         RecordingProvider(provider_result), now=lambda: NOW
     ).analyze(analysis_request)
 
+    analysis = outcome.analysis
+    assert outcome.repair_attempted is False
     assert analysis.source_asset is analysis_request.source_asset
     assert analysis.brand_lock is analysis_request.brand_lock
     assert analysis.hypotheses == provider_result.hypotheses
@@ -173,7 +233,7 @@ def test_safe_success_supports_uk_to_china(
     request = replace(analysis_request, direction="uk_to_china")
     result = _safe_result(detected_locale="en-GB", hypotheses=(_hypothesis(target_market="china"),))
 
-    analysis = AnalysisPipeline(RecordingProvider(result), now=lambda: NOW).analyze(request)
+    outcome = AnalysisPipeline(RecordingProvider(result), now=lambda: NOW).analyze(request)
 
-    assert analysis.detected_locale == "en-GB"
-    assert analysis.hypotheses[0].target_market == "china"
+    assert outcome.analysis.detected_locale == "en-GB"
+    assert outcome.analysis.hypotheses[0].target_market == "china"

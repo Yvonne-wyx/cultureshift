@@ -17,6 +17,7 @@ class LocalizationDirection(StrEnum):
 class ProjectRunStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    AWAITING_BRAND_LOCK = "awaiting_brand_lock"
     BLOCKED = "blocked"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -27,7 +28,15 @@ _ALLOWED_TRANSITIONS: dict[ProjectRunStatus, frozenset[ProjectRunStatus]] = {
         {ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.BLOCKED, ProjectRunStatus.FAILED}
     ),
     ProjectRunStatus.IN_PROGRESS: frozenset(
-        {ProjectRunStatus.BLOCKED, ProjectRunStatus.COMPLETED, ProjectRunStatus.FAILED}
+        {
+            ProjectRunStatus.AWAITING_BRAND_LOCK,
+            ProjectRunStatus.BLOCKED,
+            ProjectRunStatus.COMPLETED,
+            ProjectRunStatus.FAILED,
+        }
+    ),
+    ProjectRunStatus.AWAITING_BRAND_LOCK: frozenset(
+        {ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED}
     ),
     ProjectRunStatus.BLOCKED: frozenset({ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED}),
     ProjectRunStatus.COMPLETED: frozenset(),

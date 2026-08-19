@@ -45,6 +45,19 @@ def test_fake_provider_is_deterministic_and_does_not_derive_from_private_bytes(
     assert provider.call_count == 2
 
 
+def test_fake_provider_selects_explicit_repair_result(
+    analysis_request: VisionAnalysisRequest,
+) -> None:
+    repaired = VisionProviderResult(detected_locale=Locale.ZH_CN)
+    provider = FakeProvider({"detected_locale": "invalid"}, repair_result=repaired)
+
+    assert provider.analyze(analysis_request, attempt="initial") == {
+        "detected_locale": "invalid"
+    }
+    assert provider.analyze(analysis_request, attempt="repair") == repaired
+    assert provider.attempts == ("initial", "repair")
+
+
 def test_provider_result_is_closed() -> None:
     with pytest.raises(ValidationError):
         VisionProviderResult.model_validate(

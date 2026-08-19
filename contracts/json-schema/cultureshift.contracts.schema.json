@@ -81,6 +81,40 @@
       "title": "AdCopy",
       "type": "object"
     },
+    "AnalysisCompleted": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/AdAnalysis"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "repair_attempted": {
+          "title": "Repair Attempted",
+          "type": "boolean"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "awaiting_brand_lock",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "analysis",
+        "repair_attempted",
+        "completed_at"
+      ],
+      "title": "AnalysisCompleted",
+      "type": "object"
+    },
     "AssetKind": {
       "enum": [
         "source_ad",
@@ -797,6 +831,7 @@
       "enum": [
         "pending",
         "in_progress",
+        "awaiting_brand_lock",
         "blocked",
         "completed",
         "failed"
@@ -870,6 +905,9 @@
     "ad_copy": {
       "$ref": "#/$defs/AdCopy"
     },
+    "analysis_completed": {
+      "$ref": "#/$defs/AnalysisCompleted"
+    },
     "asset_ref": {
       "$ref": "#/$defs/AssetRef"
     },
@@ -929,6 +967,7 @@
     "run_create",
     "run_created",
     "run_snapshot",
+    "analysis_completed",
     "job_accepted",
     "feedback_request",
     "retry_request",
