@@ -283,6 +283,17 @@ class AnalysisCompleted(ContractModel):
     completed_at: UtcDatetime
 
 
+class BrandLockConfirmation(ContractModel):
+    brand_lock: BrandLock
+
+
+class BrandLockConfirmed(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.IN_PROGRESS]
+    brand_lock: BrandLock
+    confirmed_at: UtcDatetime
+
+
 class JobAccepted(ContractModel):
     run_id: UUID
     status: RunStatus
@@ -347,6 +358,8 @@ class ContractRegistry(ContractModel):
     run_created: RunCreated
     run_snapshot: RunSnapshot
     analysis_completed: AnalysisCompleted
+    brand_lock_confirmation: BrandLockConfirmation
+    brand_lock_confirmed: BrandLockConfirmed
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
     retry_request: RetryRequest

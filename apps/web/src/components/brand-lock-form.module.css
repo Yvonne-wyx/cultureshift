@@ -1,0 +1,15 @@
+.formPanel { margin-top: 1rem; padding: 1.25rem; background: #f5f8fb; border: 1px solid #7990a6; border-radius: .75rem; }
+.headingRow { display: flex; justify-content: space-between; gap: 1rem; }
+.eyebrow { margin: 0 0 .3rem; color: #40556a; font-weight: 700; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.fields > div, .mutableField { padding: .85rem; background: #fff; border: 1px solid #c5d0da; border-radius: .5rem; }
+.fields dt, .mutableField legend { font-weight: 800; }
+.fields dd { margin: .45rem 0; }
+.fields img, .productPreview { display: block; width: 100%; height: auto; margin-top: .75rem; border: 1px solid #aeb8c4; border-radius: .4rem; }
+.fields figure { display: grid; gap: .4rem; margin: .75rem 0 0; padding: .8rem; background: #edf4fa; border-radius: .4rem; }
+.mutableField { margin: .75rem 0; }
+.mutableField label { display: block; margin: .4rem 0; }
+.mutableField li { display: flex; align-items: center; gap: .45rem; margin: .35rem 0; }
+.mutableField li span { min-width: 9rem; }
+.formPanel button { padding: .5rem .7rem; }
+@media (max-width: 48rem) { .headingRow, .fields { display: grid; grid-template-columns: 1fr; } }

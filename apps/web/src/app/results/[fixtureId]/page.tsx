@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { BrandLockPreparation } from "../../../components/brand-lock-preparation";
+import { FixtureBrandLockForm } from "../../../components/fixture-brand-lock-form";
 import { listFixtureIds, loadFixture } from "../../../fixtures/fixture-loader";
 import type { FixtureId } from "../../../fixtures/types";
 import { composeFixtureResult } from "../../../results/compose-fixture-result";
@@ -74,7 +74,7 @@ export default async function ResultPage({
         </dl>
       </section>
 
-      <BrandLockPreparation fixture={fixture} />
+      <FixtureBrandLockForm fixture={fixture} />
 
       <section className={styles.details} aria-labelledby="traceability-heading">
         <h2 id="traceability-heading">Traceability</h2>

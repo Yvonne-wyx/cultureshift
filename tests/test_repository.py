@@ -1,12 +1,33 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from threading import Barrier
 
 import pytest
 
-from cultureshift.contracts import AdAnalysis, RunCreate
+from cultureshift.contracts import AdAnalysis, BrandLock, RunCreate
 from cultureshift.domain import LocalizationDirection, ProjectRun, ProjectRunStatus
-from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
+from cultureshift.repository import (
+    BrandLockImmutableError,
+    InvalidRunStateError,
+    ProjectRunNotFoundError,
+    SQLiteProjectRunRepository,
+)
+
+
+def analyzed_run(repository, valid_run_payload):
+    request = RunCreate.model_validate(valid_run_payload)
+    run = repository.create(ProjectRun(direction=request.direction), request=request)
+    repository.update_status(run.id, ProjectRunStatus.IN_PROGRESS)
+    repository.complete_analysis(
+        run.id,
+        AdAnalysis(
+            source_asset=request.source_asset,
+            detected_locale="zh-CN",
+            brand_lock=request.brand_lock,
+        ),
+    )
+    return run, request.brand_lock
 
 
 def test_repository_initializes_and_round_trips_project_run(tmp_path) -> None:
@@ -195,3 +216,129 @@ def test_completion_rolls_back_if_in_progress_claim_is_lost(
 
     assert repository.get(run.id).status is ProjectRunStatus.IN_PROGRESS
     assert repository.get_analysis(run.id) is None
+
+
+def test_initialize_migrates_day9_context_for_brand_lock_confirmation(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE project_run_contexts (
+                run_id TEXT PRIMARY KEY,
+                request_json TEXT NOT NULL,
+                analysis_json TEXT,
+                repair_attempted INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+
+    SQLiteProjectRunRepository(database).initialize()
+
+    with sqlite3.connect(database) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(project_run_contexts)")
+        }
+    assert {"confirmed_brand_lock_json", "brand_lock_confirmed_at"} <= columns
+
+
+def test_repository_confirms_brand_lock_and_returns_run_to_in_progress(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    proposed = BrandLock.model_validate(
+        {
+            **analyzed.model_dump(),
+            "benefit_order": tuple(reversed(analyzed.benefit_order)),
+            "localizable_fields": ("narrative", "language"),
+        }
+    )
+    confirmed_at = datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
+
+    record = repository.confirm_brand_lock(
+        run.id,
+        proposed,
+        confirmed_at=confirmed_at,
+    )
+
+    assert record.brand_lock == proposed
+    assert record.confirmed_at == confirmed_at
+    assert repository.get_confirmed_brand_lock(run.id) == record
+    assert repository.get(run.id).status is ProjectRunStatus.IN_PROGRESS
+
+
+def test_confirmation_retry_is_idempotent_but_different_value_is_immutable(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    first_time = datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
+    first = repository.confirm_brand_lock(run.id, analyzed, confirmed_at=first_time)
+
+    retry = repository.confirm_brand_lock(
+        run.id,
+        analyzed,
+        confirmed_at=datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
+    )
+    changed = BrandLock.model_validate(
+        {**analyzed.model_dump(), "benefit_order": tuple(reversed(analyzed.benefit_order))}
+    )
+
+    assert retry == first
+    with pytest.raises(BrandLockImmutableError):
+        repository.confirm_brand_lock(run.id, changed)
+    assert repository.get_confirmed_brand_lock(run.id) == first
+
+
+def test_concurrent_different_confirmations_store_exactly_one_value(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    reversed_lock = BrandLock.model_validate(
+        {**analyzed.model_dump(), "benefit_order": tuple(reversed(analyzed.benefit_order))}
+    )
+    barrier = Barrier(2)
+
+    def confirm(proposed):
+        barrier.wait()
+        try:
+            return repository.confirm_brand_lock(run.id, proposed).brand_lock
+        except (BrandLockImmutableError, InvalidRunStateError):
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(confirm, (analyzed, reversed_lock)))
+
+    winner = repository.get_confirmed_brand_lock(run.id)
+    assert winner is not None
+    assert sum(result is not None for result in results) == 1
+    assert winner.brand_lock in (analyzed, reversed_lock)
+
+
+def test_confirmation_rolls_back_when_awaiting_claim_is_lost(
+    tmp_path, valid_run_payload
+) -> None:
+    database = tmp_path / "runs.sqlite3"
+    repository = SQLiteProjectRunRepository(database)
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER lose_brand_lock_claim
+            AFTER UPDATE OF confirmed_brand_lock_json ON project_run_contexts
+            BEGIN
+                UPDATE project_runs SET status = 'blocked' WHERE id = NEW.run_id;
+            END
+            """
+        )
+
+    with pytest.raises(InvalidRunStateError):
+        repository.confirm_brand_lock(run.id, analyzed)
+
+    assert repository.get_confirmed_brand_lock(run.id) is None
+    assert repository.get(run.id).status is ProjectRunStatus.AWAITING_BRAND_LOCK

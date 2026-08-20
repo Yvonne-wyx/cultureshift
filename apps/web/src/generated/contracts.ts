@@ -251,6 +251,8 @@ export type MediaType1 = string;
 export type Sha2561 = string;
 export type DeleteCapabilityToken = string;
 export type SizeBytes = number;
+export type RunId1 = string;
+export type Status1 = "in_progress";
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "LocalizationDirection".
@@ -271,7 +273,7 @@ export type RequiresHumanReview = boolean;
 export type Warnings1 = string[];
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type ExportResultVersion = number;
-export type RunId1 = string;
+export type RunId2 = string;
 /**
  * @maxItems 32
  */
@@ -331,8 +333,8 @@ export type RequestedChanges =
       string,
       string
     ];
-export type RunId2 = string;
 export type RunId3 = string;
+export type RunId4 = string;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "RunStatus".
@@ -346,16 +348,16 @@ export type Version = number;
  * @maxItems 64
  */
 export type ResultVersions = ResultVersion[];
-export type RunId4 = string;
+export type RunId5 = string;
 /**
  * @maxItems 32
  */
 export type WarningCodes = string[];
 export type ReasonCategory = "validation" | "generation" | "review";
-export type RunId5 = string;
-export type CapabilityToken = string;
 export type RunId6 = string;
+export type CapabilityToken = string;
 export type RunId7 = string;
+export type RunId8 = string;
 /**
  * @maxItems 32
  */
@@ -373,6 +375,8 @@ export interface ContractRegistry {
   asset_ref: AssetRef;
   asset_uploaded: AssetUploaded;
   brand_lock: BrandLock;
+  brand_lock_confirmation: BrandLockConfirmation;
+  brand_lock_confirmed: BrandLockConfirmed;
   creative_brief: CreativeBrief;
   critique_report: CritiqueReport;
   cultural_hypothesis: CulturalHypothesis;
@@ -485,6 +489,23 @@ export interface AssetUploaded {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "BrandLockConfirmation".
+ */
+export interface BrandLockConfirmation {
+  brand_lock: BrandLock;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "BrandLockConfirmed".
+ */
+export interface BrandLockConfirmed {
+  brand_lock: BrandLock;
+  confirmed_at: UtcDatetime;
+  run_id: RunId1;
+  status: Status1;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "CreativeBrief".
  */
 export interface CreativeBrief {
@@ -513,7 +534,7 @@ export interface ExportSummary {
   approval_status: ApprovalStatus;
   exported_at: UtcDatetime;
   result_version: ExportResultVersion;
-  run_id: RunId1;
+  run_id: RunId2;
   warnings?: Warnings2;
 }
 /**
@@ -523,7 +544,7 @@ export interface ExportSummary {
 export interface FeedbackRequest {
   feedback: Feedback;
   requested_changes: RequestedChanges;
-  run_id: RunId2;
+  run_id: RunId3;
   submitted_at: UtcDatetime;
 }
 /**
@@ -532,7 +553,7 @@ export interface FeedbackRequest {
  */
 export interface JobAccepted {
   accepted_at: UtcDatetime;
-  run_id: RunId3;
+  run_id: RunId4;
   status: RunStatus;
 }
 /**
@@ -543,7 +564,7 @@ export interface ProjectRunContract {
   created_at: UtcDatetime;
   request: RunCreate;
   result_versions?: ResultVersions;
-  run_id: RunId4;
+  run_id: RunId5;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes;
@@ -579,7 +600,7 @@ export interface ResultVersion {
  */
 export interface RetryRequest {
   reason_category: ReasonCategory;
-  run_id: RunId5;
+  run_id: RunId6;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -588,7 +609,7 @@ export interface RetryRequest {
 export interface RunCreated {
   capability_token: CapabilityToken;
   created_at: UtcDatetime;
-  run_id: RunId6;
+  run_id: RunId7;
   status: RunStatus;
 }
 /**
@@ -598,7 +619,7 @@ export interface RunCreated {
 export interface RunSnapshot {
   created_at: UtcDatetime;
   direction: LocalizationDirection;
-  run_id: RunId7;
+  run_id: RunId8;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes1;

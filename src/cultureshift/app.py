@@ -32,6 +32,7 @@ from cultureshift.asset_storage import (
     TemporaryAssetStore,
     UnsupportedAssetTypeError,
 )
+from cultureshift.brand_lock_confirmation import BrandLockConfirmationError
 from cultureshift.capability_tokens import (
     Capability,
     CapabilityTokenError,
@@ -40,6 +41,8 @@ from cultureshift.capability_tokens import (
 from cultureshift.contracts import (
     AnalysisCompleted,
     AssetUploaded,
+    BrandLockConfirmation,
+    BrandLockConfirmed,
     RunCreate,
     RunCreated,
     RunSnapshot,
@@ -47,7 +50,12 @@ from cultureshift.contracts import (
 )
 from cultureshift.domain import ProjectRun, ProjectRunStatus
 from cultureshift.rate_limits import FixedWindowRateLimiter
-from cultureshift.repository import ProjectRunNotFoundError, SQLiteProjectRunRepository
+from cultureshift.repository import (
+    BrandLockImmutableError,
+    InvalidRunStateError,
+    ProjectRunNotFoundError,
+    SQLiteProjectRunRepository,
+)
 
 
 def _capability_service_from_environment() -> CapabilityTokenService:
@@ -217,6 +225,7 @@ def create_app(
                 capabilities={
                     Capability.READ_PROJECT_RUN,
                     Capability.ANALYZE_PROJECT_RUN,
+                    Capability.UPDATE_PROJECT_RUN,
                 },
                 ttl=timedelta(minutes=15),
             )
@@ -414,6 +423,69 @@ def create_app(
             analysis=outcome.analysis,
             repair_attempted=outcome.repair_attempted,
             completed_at=completed.updated_at,
+        )
+
+    @application.post(
+        "/api/v1/runs/{run_id}/brand-lock/confirm",
+        response_model=BrandLockConfirmed,
+        tags=["runs"],
+    )
+    def confirm_brand_lock(
+        run_id: UUID,
+        confirmation: BrandLockConfirmation,
+        request: Request,
+    ) -> BrandLockConfirmed:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.UPDATE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        try:
+            record = runs.confirm_brand_lock(run_id, confirmation.brand_lock)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+        except InvalidRunStateError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            ) from None
+        except BrandLockImmutableError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "brand_lock_immutable"},
+            ) from None
+        except BrandLockConfirmationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": error.code.value},
+            ) from None
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "brand_lock_persistence_failed"},
+            ) from None
+        return BrandLockConfirmed(
+            run_id=run_id,
+            status=RunStatus.IN_PROGRESS,
+            brand_lock=record.brand_lock,
+            confirmed_at=record.confirmed_at,
         )
 
     return application

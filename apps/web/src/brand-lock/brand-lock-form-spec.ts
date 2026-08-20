@@ -26,7 +26,7 @@ export const BRAND_LOCK_FORM_SPEC = [
   {
     key: "logo_asset_id",
     label: "Logo asset",
-    help: "Review the approved logo asset; replacement is a Day 10 decision.",
+    help: "Review the approved logo asset; it remains locked during confirmation.",
     control: "asset_preview",
     preview: true,
     required: true,
@@ -62,7 +62,7 @@ export const BRAND_LOCK_FORM_SPEC = [
   {
     key: "benefit_order",
     label: "Benefit order",
-    help: "Review the priority order without changing it before confirmation.",
+    help: "Set the approved benefit priority before confirmation makes it immutable.",
     control: "reorder",
     preview: false,
     required: true,

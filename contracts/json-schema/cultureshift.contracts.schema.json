@@ -294,6 +294,48 @@
       "title": "BrandLock",
       "type": "object"
     },
+    "BrandLockConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock": {
+          "$ref": "#/$defs/BrandLock"
+        }
+      },
+      "required": [
+        "brand_lock"
+      ],
+      "title": "BrandLockConfirmation",
+      "type": "object"
+    },
+    "BrandLockConfirmed": {
+      "additionalProperties": false,
+      "properties": {
+        "brand_lock": {
+          "$ref": "#/$defs/BrandLock"
+        },
+        "confirmed_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "in_progress",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "brand_lock",
+        "confirmed_at"
+      ],
+      "title": "BrandLockConfirmed",
+      "type": "object"
+    },
     "CreativeBrief": {
       "additionalProperties": false,
       "properties": {
@@ -917,6 +959,12 @@
     "brand_lock": {
       "$ref": "#/$defs/BrandLock"
     },
+    "brand_lock_confirmation": {
+      "$ref": "#/$defs/BrandLockConfirmation"
+    },
+    "brand_lock_confirmed": {
+      "$ref": "#/$defs/BrandLockConfirmed"
+    },
     "creative_brief": {
       "$ref": "#/$defs/CreativeBrief"
     },
@@ -968,6 +1016,8 @@
     "run_created",
     "run_snapshot",
     "analysis_completed",
+    "brand_lock_confirmation",
+    "brand_lock_confirmed",
     "job_accepted",
     "feedback_request",
     "retry_request",

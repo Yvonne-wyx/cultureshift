@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +10,8 @@ from cultureshift.contracts import (
     AssetKind,
     AssetRef,
     BrandLock,
+    BrandLockConfirmation,
+    BrandLockConfirmed,
     ContractRegistry,
     CulturalHypothesis,
     ExecutionMode,
@@ -79,6 +82,28 @@ def test_analysis_completed_requires_awaiting_brand_lock(
     assert completed.status is RunStatus.AWAITING_BRAND_LOCK
     with pytest.raises(ValidationError):
         AnalysisCompleted.model_validate({**completed.model_dump(), "status": "completed"})
+
+
+def test_brand_lock_confirmation_contracts_are_closed(
+    valid_run_payload: dict[str, object],
+) -> None:
+    brand_lock = BrandLock.model_validate(valid_run_payload["brand_lock"])
+    request = BrandLockConfirmation(brand_lock=brand_lock)
+    response = BrandLockConfirmed(
+        run_id=uuid4(),
+        status=RunStatus.IN_PROGRESS,
+        brand_lock=request.brand_lock,
+        confirmed_at=datetime(2026, 8, 20, tzinfo=UTC),
+    )
+
+    assert response.status is RunStatus.IN_PROGRESS
+    assert BrandLockConfirmed.model_validate_json(response.model_dump_json()) == response
+    with pytest.raises(ValidationError):
+        BrandLockConfirmation.model_validate(
+            {"brand_lock": brand_lock.model_dump(), "private_note": "do not echo"}
+        )
+    with pytest.raises(ValidationError):
+        BrandLockConfirmed.model_validate({**response.model_dump(), "status": "completed"})
 
 
 def test_asset_ref_is_serializable_and_rejects_local_paths() -> None:
@@ -435,6 +460,8 @@ def test_registry_schema_contains_every_public_contract() -> None:
         "AssetRef",
         "AssetUploaded",
         "BrandLock",
+        "BrandLockConfirmation",
+        "BrandLockConfirmed",
         "CulturalHypothesis",
         "AdAnalysis",
         "CreativeBrief",

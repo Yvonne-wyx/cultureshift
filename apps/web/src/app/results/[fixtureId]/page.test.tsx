@@ -20,12 +20,13 @@ describe("fixture result page", () => {
       expect(screen.getByRole("heading", { name: "Localized fixture result" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Brand Lock" })).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Brand Lock confirmation preparation" }),
+        screen.getByRole("heading", { name: "Confirm Brand Lock" }),
       ).toBeInTheDocument();
       expect(screen.getByText("awaiting_brand_lock")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "Confirm Brand Lock — available Day 10" }),
-      ).toBeDisabled();
+        screen.getByRole("button", { name: "Confirm Brand Lock" }),
+      ).toBeEnabled();
+      expect(screen.getByText("Fixture confirmation only")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Traceability" })).toBeInTheDocument();
       expect(screen.getByText("1. Review source")).toBeInTheDocument();
       expect(screen.getByText("2. Inspect proposal")).toBeInTheDocument();

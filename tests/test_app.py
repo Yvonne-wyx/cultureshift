@@ -43,6 +43,8 @@ def test_health_contracts_and_openapi(tmp_path) -> None:
         openapi = client.get("/openapi.json").json()
     assert "RunCreate" in openapi["components"]["schemas"]
     assert "RunCreated" in openapi["components"]["schemas"]
+    assert "BrandLockConfirmation" in openapi["components"]["schemas"]
+    assert "BrandLockConfirmed" in openapi["components"]["schemas"]
 
 
 def test_create_run_returns_one_time_token_without_persisting_it(
@@ -159,6 +161,16 @@ def create_uploaded_run(client: TestClient, valid_run_payload) -> tuple[str, str
     return run_id, token, uploaded.json()
 
 
+def create_analyzed_run(client: TestClient, valid_run_payload) -> tuple[str, str]:
+    run_id, token, _ = create_uploaded_run(client, valid_run_payload)
+    analyzed = client.post(
+        f"/api/v1/runs/{run_id}/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert analyzed.status_code == 200
+    return run_id, token
+
+
 @pytest.mark.parametrize(
     ("direction", "detected_locale"),
     [("china_to_uk", "zh-CN"), ("uk_to_china", "en-GB")],
@@ -260,6 +272,209 @@ def test_analyze_requires_matching_analyze_capability(tmp_path, valid_run_payloa
     assert response.status_code == 401
     assert response.json() == {"detail": {"code": "invalid_capability"}}
     assert read_only not in response.text
+
+
+def test_confirm_brand_lock_is_idempotent_then_immutable(
+    tmp_path, valid_run_payload
+) -> None:
+    client, repository = make_client(tmp_path)
+    proposed = {
+        **valid_run_payload["brand_lock"],
+        "benefit_order": ["Organize", "Summarize"],
+        "localizable_fields": ["narrative", "language"],
+    }
+    with client:
+        run_id, token = create_analyzed_run(client, valid_run_payload)
+        first = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": proposed},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        retry = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": proposed},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        changed = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert first.status_code == retry.status_code == 200
+    assert retry.json() == first.json()
+    assert first.json()["status"] == "in_progress"
+    assert first.json()["brand_lock"] == proposed
+    assert "capability_token" not in first.text
+    assert repository.get_confirmed_brand_lock(run_id) is not None
+    assert changed.status_code == 409
+    assert changed.json() == {"detail": {"code": "brand_lock_immutable"}}
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_code"),
+    [
+        ({"product_name": "Do not echo private product"}, "locked_field_changed"),
+        ({"benefit_order": ["Summarize"]}, "benefit_order_invalid"),
+    ],
+)
+def test_confirm_brand_lock_rejects_semantic_drift_without_echo(
+    tmp_path, valid_run_payload, change, expected_code
+) -> None:
+    client, _ = make_client(tmp_path)
+    proposed = {**valid_run_payload["brand_lock"], **change}
+    with client:
+        run_id, token = create_analyzed_run(client, valid_run_payload)
+        response = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": proposed},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": expected_code}}
+    assert "Do not echo private product" not in response.text
+
+
+def test_confirm_brand_lock_rejects_fields_outside_analysis_allowlist(
+    tmp_path, valid_run_payload
+) -> None:
+    source_lock = {
+        **valid_run_payload["brand_lock"],
+        "localizable_fields": ["narrative"],
+    }
+    payload = {**valid_run_payload, "brand_lock": source_lock}
+    proposed = {**source_lock, "localizable_fields": ["narrative", "language"]}
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_analyzed_run(client, payload)
+        response = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": proposed},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "localizable_fields_invalid"}}
+
+
+def test_confirm_brand_lock_requires_update_capability_and_matching_subject(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    with client:
+        run_id, _ = create_analyzed_run(client, valid_run_payload)
+        other_run, _ = create_run(client, valid_run_payload)
+        read_only = tokens.issue(
+            subject=run_id,
+            capabilities={Capability.READ_PROJECT_RUN},
+            ttl=timedelta(minutes=5),
+        )
+        wrong_subject = tokens.issue(
+            subject=other_run,
+            capabilities={Capability.UPDATE_PROJECT_RUN},
+            ttl=timedelta(minutes=5),
+        )
+        unauthorized = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {read_only}"},
+        )
+        forbidden = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {wrong_subject}"},
+        )
+
+    assert unauthorized.status_code == 401
+    assert unauthorized.json() == {"detail": {"code": "invalid_capability"}}
+    assert forbidden.status_code == 403
+    assert forbidden.json() == {"detail": {"code": "capability_subject_mismatch"}}
+
+
+def test_confirm_brand_lock_rejects_pending_run_and_sanitizes_unknown_key(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    private_key = r"C:\private\confirmation.txt"
+    with client:
+        run_id, token = create_run(client, valid_run_payload)
+        pending = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        invalid = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"], private_key: "x"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert pending.status_code == 409
+    assert pending.json() == {"detail": {"code": "invalid_run_state"}}
+    assert invalid.status_code == 422
+    assert private_key not in invalid.text
+
+
+def test_confirm_brand_lock_returns_not_found_for_unknown_run(tmp_path, valid_run_payload) -> None:
+    client, _ = make_client(tmp_path)
+    missing_id = str(uuid4())
+    token = CapabilityTokenService(
+        secret=b"a" * 32,
+        audience="cultureshift-api",
+    ).issue(
+        subject=missing_id,
+        capabilities={Capability.UPDATE_PROJECT_RUN},
+        ttl=timedelta(minutes=5),
+    )
+    with client:
+        response = client.post(
+            f"/api/v1/runs/{missing_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": {"code": "run_not_found"}}
+
+
+def test_confirm_brand_lock_sanitizes_unexpected_repository_failure(
+    tmp_path, valid_run_payload
+) -> None:
+    private_marker = r"C:\private\brand-lock.sqlite3"
+
+    class FailingConfirmationRepository(SQLiteProjectRunRepository):
+        def confirm_brand_lock(self, run_id, proposed, *, confirmed_at=None):
+            raise RuntimeError(private_marker)
+
+    repository = FailingConfirmationRepository(tmp_path / "runs.sqlite3")
+    tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    client = TestClient(
+        create_app(
+            repository=repository,
+            token_service=tokens,
+            asset_store=TemporaryAssetStore(tmp_path / "assets"),
+        )
+    )
+    run_id = str(uuid4())
+    token = tokens.issue(
+        subject=run_id,
+        capabilities={Capability.UPDATE_PROJECT_RUN},
+        ttl=timedelta(minutes=5),
+    )
+    with client:
+        response = client.post(
+            f"/api/v1/runs/{run_id}/brand-lock/confirm",
+            json={"brand_lock": valid_run_payload["brand_lock"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": {"code": "brand_lock_persistence_failed"}
+    }
+    assert private_marker not in response.text
 
 
 def test_analyze_blocks_deleted_asset_without_echo(tmp_path, valid_run_payload) -> None:
