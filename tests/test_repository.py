@@ -1,6 +1,6 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import timedelta
 from threading import Barrier
 
 import pytest
@@ -254,7 +254,7 @@ def test_repository_confirms_brand_lock_and_returns_run_to_in_progress(
             "localizable_fields": ("narrative", "language"),
         }
     )
-    confirmed_at = datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
+    confirmed_at = run.created_at + timedelta(seconds=1)
 
     record = repository.confirm_brand_lock(
         run.id,
@@ -274,13 +274,13 @@ def test_confirmation_retry_is_idempotent_but_different_value_is_immutable(
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     repository.initialize()
     run, analyzed = analyzed_run(repository, valid_run_payload)
-    first_time = datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
+    first_time = run.created_at + timedelta(seconds=1)
     first = repository.confirm_brand_lock(run.id, analyzed, confirmed_at=first_time)
 
     retry = repository.confirm_brand_lock(
         run.id,
         analyzed,
-        confirmed_at=datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
+        confirmed_at=first_time + timedelta(hours=1),
     )
     changed = BrandLock.model_validate(
         {**analyzed.model_dump(), "benefit_order": tuple(reversed(analyzed.benefit_order))}
@@ -290,6 +290,24 @@ def test_confirmation_retry_is_idempotent_but_different_value_is_immutable(
     with pytest.raises(BrandLockImmutableError):
         repository.confirm_brand_lock(run.id, changed)
     assert repository.get_confirmed_brand_lock(run.id) == first
+
+
+def test_confirmation_rejects_timestamp_before_run_creation(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+
+    with pytest.raises(ValueError, match="confirmed_at cannot precede run creation"):
+        repository.confirm_brand_lock(
+            run.id,
+            analyzed,
+            confirmed_at=run.created_at - timedelta(seconds=1),
+        )
+
+    assert repository.get_confirmed_brand_lock(run.id) is None
+    assert repository.get(run.id).status is ProjectRunStatus.AWAITING_BRAND_LOCK
 
 
 def test_concurrent_different_confirmations_store_exactly_one_value(

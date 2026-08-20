@@ -317,6 +317,7 @@ class SQLiteProjectRunRepository:
                 """
                 SELECT
                     r.status,
+                    r.created_at,
                     c.analysis_json,
                     c.confirmed_brand_lock_json,
                     c.brand_lock_confirmed_at
@@ -333,6 +334,8 @@ class SQLiteProjectRunRepository:
                 if existing.brand_lock == proposed:
                     return existing
                 raise BrandLockImmutableError("Brand Lock is immutable")
+            if confirmation_time < datetime.fromisoformat(row["created_at"]):
+                raise ValueError("confirmed_at cannot precede run creation")
             if row["status"] != ProjectRunStatus.AWAITING_BRAND_LOCK.value:
                 raise InvalidRunStateError("run is not awaiting Brand Lock")
             if row["analysis_json"] is None:
