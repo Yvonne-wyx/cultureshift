@@ -43,15 +43,23 @@ from cultureshift.contracts import (
     AssetUploaded,
     BrandLockConfirmation,
     BrandLockConfirmed,
+    DraftGenerated,
     RunCreate,
     RunCreated,
     RunSnapshot,
     RunStatus,
 )
 from cultureshift.domain import ProjectRun, ProjectRunStatus
+from cultureshift.draft_generation import (
+    DraftErrorCode,
+    DraftGenerationError,
+    DraftGenerator,
+    FixtureCopywriter,
+)
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import (
     BrandLockImmutableError,
+    DraftImmutableError,
     InvalidRunStateError,
     ProjectRunNotFoundError,
     SQLiteProjectRunRepository,
@@ -82,6 +90,7 @@ def create_app(
     asset_store: TemporaryAssetStore | None = None,
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
     analysis_provider: VisionProvider | None = None,
+    draft_generator: DraftGenerator | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -90,6 +99,7 @@ def create_app(
         limit=10, window=timedelta(minutes=1)
     )
     provider = analysis_provider or FixtureProvider()
+    drafts = draft_generator or DraftGenerator(FixtureCopywriter())
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -486,6 +496,110 @@ def create_app(
             status=RunStatus.IN_PROGRESS,
             brand_lock=record.brand_lock,
             confirmed_at=record.confirmed_at,
+        )
+
+    @application.post(
+        "/api/v1/runs/{run_id}/draft",
+        response_model=DraftGenerated,
+        tags=["runs"],
+    )
+    def generate_draft(run_id: UUID, request: Request) -> DraftGenerated:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.UPDATE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+
+        try:
+            existing = runs.get_draft(run_id)
+            run = runs.get(run_id)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+        if existing is not None:
+            return DraftGenerated(
+                run_id=run.id,
+                status=RunStatus.IN_PROGRESS,
+                brief=existing.brief,
+                copy=existing.ad_copy,
+                rule_ids=existing.rule_ids,
+                generated_at=existing.generated_at,
+            )
+        try:
+            analysis = runs.get_analysis(run_id)
+            confirmation = runs.get_confirmed_brand_lock(run_id)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+        if analysis is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            )
+        if confirmation is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "brand_lock_unconfirmed"},
+            )
+        if run.status is not ProjectRunStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            )
+        try:
+            generated = drafts.generate(analysis, confirmation.brand_lock)
+        except DraftGenerationError as error:
+            status_code = (
+                status.HTTP_409_CONFLICT
+                if error.code is DraftErrorCode.BRAND_LOCK_UNCONFIRMED
+                else status.HTTP_422_UNPROCESSABLE_CONTENT
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": error.code.value},
+            ) from None
+        try:
+            record = runs.save_draft(
+                run_id,
+                generated.brief,
+                generated.ad_copy,
+                generated.rule_ids,
+            )
+        except (InvalidRunStateError, DraftImmutableError):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            ) from None
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "draft_persistence_failed"},
+            ) from None
+        return DraftGenerated(
+            run_id=run.id,
+            status=RunStatus.IN_PROGRESS,
+            brief=record.brief,
+            copy=record.ad_copy,
+            rule_ids=record.rule_ids,
+            generated_at=record.generated_at,
         )
 
     return application

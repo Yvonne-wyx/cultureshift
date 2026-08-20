@@ -1,14 +1,16 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from threading import Barrier
 
 import pytest
 
 from cultureshift.contracts import AdAnalysis, BrandLock, RunCreate
 from cultureshift.domain import LocalizationDirection, ProjectRun, ProjectRunStatus
+from cultureshift.draft_generation import DraftGenerator, FixtureCopywriter
 from cultureshift.repository import (
     BrandLockImmutableError,
+    DraftImmutableError,
     InvalidRunStateError,
     ProjectRunNotFoundError,
     SQLiteProjectRunRepository,
@@ -239,6 +241,96 @@ def test_initialize_migrates_day9_context_for_brand_lock_confirmation(tmp_path) 
             row[1] for row in connection.execute("PRAGMA table_info(project_run_contexts)")
         }
     assert {"confirmed_brand_lock_json", "brand_lock_confirmed_at"} <= columns
+
+
+def test_initialize_migrates_context_for_day11_draft(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE project_run_contexts (
+                run_id TEXT PRIMARY KEY,
+                request_json TEXT NOT NULL,
+                analysis_json TEXT,
+                repair_attempted INTEGER NOT NULL DEFAULT 0,
+                confirmed_brand_lock_json TEXT,
+                brand_lock_confirmed_at TEXT
+            )
+            """
+        )
+
+    SQLiteProjectRunRepository(database).initialize()
+
+    with sqlite3.connect(database) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(project_run_contexts)")
+        }
+    assert {
+        "creative_brief_json",
+        "ad_copy_json",
+        "draft_rule_ids_json",
+        "draft_generated_at",
+    } <= columns
+
+
+def test_repository_saves_and_replays_one_immutable_draft(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    draft = DraftGenerator(FixtureCopywriter()).generate(analysis, analyzed)
+    generated_at = datetime(2026, 8, 20, 10, 0, tzinfo=UTC)
+
+    first = repository.save_draft(
+        run.id,
+        draft.brief,
+        draft.ad_copy,
+        draft.rule_ids,
+        generated_at=generated_at,
+    )
+    retry = repository.save_draft(
+        run.id,
+        draft.brief,
+        draft.ad_copy,
+        draft.rule_ids,
+        generated_at=generated_at + timedelta(hours=1),
+    )
+
+    assert first.generated_at == generated_at
+    assert retry == first
+    assert repository.get_draft(run.id) == first
+    with pytest.raises(DraftImmutableError):
+        repository.save_draft(
+            run.id,
+            draft.brief,
+            draft.ad_copy.model_copy(update={"headline": "Changed"}),
+            draft.rule_ids,
+        )
+
+
+def test_repository_rejects_draft_before_brand_lock_confirmation(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    draft = DraftGenerator(FixtureCopywriter()).generate(analysis, analyzed)
+
+    with pytest.raises(InvalidRunStateError):
+        repository.save_draft(
+            run.id,
+            draft.brief,
+            draft.ad_copy,
+            draft.rule_ids,
+        )
+
+    assert repository.get_draft(run.id) is None
 
 
 def test_repository_confirms_brand_lock_and_returns_run_to_in_progress(

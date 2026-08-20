@@ -9,6 +9,12 @@ from cultureshift.analysis_provider import FakeProvider, VisionProvider, VisionP
 from cultureshift.app import create_app
 from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
+from cultureshift.draft_generation import (
+    DraftErrorCode,
+    DraftGenerationError,
+    DraftGenerator,
+    FixtureCopywriter,
+)
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import SQLiteProjectRunRepository
 
@@ -18,6 +24,7 @@ def make_client(
     *,
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
     analysis_provider: VisionProvider | None = None,
+    draft_generator: DraftGenerator | None = None,
 ) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
@@ -29,6 +36,7 @@ def make_client(
                 asset_store=TemporaryAssetStore(tmp_path / "assets"),
                 upload_rate_limiter=upload_rate_limiter,
                 analysis_provider=analysis_provider,
+                draft_generator=draft_generator,
             )
         ),
         repository,
@@ -169,6 +177,94 @@ def create_analyzed_run(client: TestClient, valid_run_payload) -> tuple[str, str
     )
     assert analyzed.status_code == 200
     return run_id, token
+
+
+def create_confirmed_run(client: TestClient, valid_run_payload) -> tuple[str, str]:
+    run_id, token = create_analyzed_run(client, valid_run_payload)
+    confirmed = client.post(
+        f"/api/v1/runs/{run_id}/brand-lock/confirm",
+        json={"brand_lock": valid_run_payload["brand_lock"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert confirmed.status_code == 200
+    return run_id, token
+
+
+@pytest.mark.parametrize(
+    ("direction", "rules", "locale"),
+    [
+        ("china_to_uk", ["ZEU-S1", "ZEU-S3"], "en-GB"),
+        ("uk_to_china", ["EZC-S1", "EZC-S3"], "zh-CN"),
+    ],
+)
+def test_generate_draft_is_authenticated_bilateral_and_idempotent(
+    tmp_path, valid_run_payload, direction, rules, locale
+) -> None:
+    payload = {**valid_run_payload, "direction": direction}
+    client, repository = make_client(tmp_path)
+    with client:
+        run_id, token = create_confirmed_run(client, payload)
+        first = client.post(
+            f"/api/v1/runs/{run_id}/draft",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        retry = client.post(
+            f"/api/v1/runs/{run_id}/draft",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert first.status_code == 200
+    assert retry.json() == first.json()
+    assert first.json()["status"] == "in_progress"
+    assert first.json()["copy"]["locale"] == locale
+    assert first.json()["rule_ids"] == rules
+    assert "capability_token" not in first.text
+    assert repository.get_draft(run_id) is not None
+
+
+def test_generate_draft_requires_update_capability_and_confirmation(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_analyzed_run(client, valid_run_payload)
+        missing = client.post(f"/api/v1/runs/{run_id}/draft")
+        unconfirmed = client.post(
+            f"/api/v1/runs/{run_id}/draft",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert missing.status_code == 401
+    assert missing.json() == {"detail": {"code": "invalid_capability"}}
+    assert unconfirmed.status_code == 409
+    assert unconfirmed.json() == {"detail": {"code": "brand_lock_unconfirmed"}}
+
+
+def test_generate_draft_sanitizes_generation_failure(tmp_path, valid_run_payload) -> None:
+    private_marker = r"C:\private\prompt.txt"
+
+    class FailingGenerator(DraftGenerator):
+        def generate(self, analysis, confirmed_brand_lock):
+            del analysis, confirmed_brand_lock
+            error = DraftGenerationError(DraftErrorCode.OUTPUT_INVALID)
+            error.add_note(private_marker)
+            raise error
+
+    client, repository = make_client(
+        tmp_path,
+        draft_generator=FailingGenerator(FixtureCopywriter()),
+    )
+    with client:
+        run_id, token = create_confirmed_run(client, valid_run_payload)
+        response = client.post(
+            f"/api/v1/runs/{run_id}/draft",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": {"code": "draft_output_invalid"}}
+    assert private_marker not in response.text
+    assert repository.get_draft(run_id) is None
 
 
 @pytest.mark.parametrize(

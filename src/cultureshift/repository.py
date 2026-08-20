@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import UUID
 
 from cultureshift.brand_lock_confirmation import validate_brand_lock_confirmation
-from cultureshift.contracts import AdAnalysis, BrandLock, RunCreate
+from cultureshift.contracts import AdAnalysis, AdCopy, BrandLock, CreativeBrief, RunCreate
 from cultureshift.domain import ProjectRun, ProjectRunStatus, utc_now
 
 
@@ -30,10 +30,22 @@ class InvalidRunStateError(ValueError):
     pass
 
 
+class DraftImmutableError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class BrandLockConfirmationRecord:
     brand_lock: BrandLock
     confirmed_at: datetime
+
+
+@dataclass(frozen=True)
+class DraftRecord:
+    brief: CreativeBrief
+    ad_copy: AdCopy
+    rule_ids: tuple[str, ...]
+    generated_at: datetime
 
 
 class SQLiteProjectRunRepository:
@@ -78,7 +90,11 @@ class SQLiteProjectRunRepository:
                     analysis_json TEXT,
                     repair_attempted INTEGER NOT NULL DEFAULT 0,
                     confirmed_brand_lock_json TEXT,
-                    brand_lock_confirmed_at TEXT
+                    brand_lock_confirmed_at TEXT,
+                    creative_brief_json TEXT,
+                    ad_copy_json TEXT,
+                    draft_rule_ids_json TEXT,
+                    draft_generated_at TEXT
                 )
                 """
             )
@@ -101,6 +117,17 @@ class SQLiteProjectRunRepository:
                 connection.execute(
                     "ALTER TABLE project_run_contexts ADD COLUMN brand_lock_confirmed_at TEXT"
                 )
+            draft_columns = {
+                "creative_brief_json": "TEXT",
+                "ad_copy_json": "TEXT",
+                "draft_rule_ids_json": "TEXT",
+                "draft_generated_at": "TEXT",
+            }
+            for name, sql_type in draft_columns.items():
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE project_run_contexts ADD COLUMN {name} {sql_type}"
+                    )
 
     def create(self, run: ProjectRun, *, request: RunCreate | None = None) -> ProjectRun:
         try:
@@ -187,6 +214,21 @@ class SQLiteProjectRunRepository:
             raise ProjectRunNotFoundError(str(run_id))
         return self._confirmation_record(row)
 
+    def get_draft(self, run_id: UUID | str) -> DraftRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT creative_brief_json, ad_copy_json,
+                       draft_rule_ids_json, draft_generated_at
+                FROM project_run_contexts
+                WHERE run_id = ?
+                """,
+                (str(run_id),),
+            ).fetchone()
+        if row is None:
+            raise ProjectRunNotFoundError(str(run_id))
+        return self._draft_record(row)
+
     @staticmethod
     def _confirmation_record(row: sqlite3.Row) -> BrandLockConfirmationRecord | None:
         encoded = row["confirmed_brand_lock_json"]
@@ -202,6 +244,100 @@ class SQLiteProjectRunRepository:
             brand_lock=BrandLock.model_validate_json(encoded),
             confirmed_at=confirmed_at,
         )
+
+    @staticmethod
+    def _draft_record(row: sqlite3.Row) -> DraftRecord | None:
+        values = (
+            row["creative_brief_json"],
+            row["ad_copy_json"],
+            row["draft_rule_ids_json"],
+            row["draft_generated_at"],
+        )
+        if all(value is None for value in values):
+            return None
+        if any(value is None for value in values):
+            raise ValueError("invalid draft persistence state")
+        generated_at = datetime.fromisoformat(row["draft_generated_at"])
+        if generated_at.tzinfo is None or generated_at.utcoffset() != timedelta(0):
+            raise ValueError("invalid draft persistence state")
+        rule_ids = json.loads(row["draft_rule_ids_json"])
+        if not isinstance(rule_ids, list) or not all(
+            isinstance(value, str) for value in rule_ids
+        ):
+            raise ValueError("invalid draft persistence state")
+        return DraftRecord(
+            brief=CreativeBrief.model_validate_json(row["creative_brief_json"]),
+            ad_copy=AdCopy.model_validate_json(row["ad_copy_json"]),
+            rule_ids=tuple(rule_ids),
+            generated_at=generated_at,
+        )
+
+    def save_draft(
+        self,
+        run_id: UUID | str,
+        brief: CreativeBrief,
+        ad_copy: AdCopy,
+        rule_ids: tuple[str, ...],
+        *,
+        generated_at: datetime | None = None,
+    ) -> DraftRecord:
+        generation_time = generated_at or utc_now()
+        if generation_time.tzinfo is None or generation_time.utcoffset() != timedelta(0):
+            raise ValueError("generated_at must use UTC")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT r.status, c.confirmed_brand_lock_json,
+                       c.creative_brief_json, c.ad_copy_json,
+                       c.draft_rule_ids_json, c.draft_generated_at
+                FROM project_runs AS r
+                LEFT JOIN project_run_contexts AS c ON c.run_id = r.id
+                WHERE r.id = ?
+                """,
+                (str(run_id),),
+            ).fetchone()
+            if row is None:
+                raise ProjectRunNotFoundError(str(run_id))
+            existing = self._draft_record(row)
+            if existing is not None:
+                if (
+                    existing.brief == brief
+                    and existing.ad_copy == ad_copy
+                    and existing.rule_ids == rule_ids
+                ):
+                    return existing
+                raise DraftImmutableError("draft is immutable")
+            if (
+                row["status"] != ProjectRunStatus.IN_PROGRESS.value
+                or row["confirmed_brand_lock_json"] is None
+            ):
+                raise InvalidRunStateError("confirmed in-progress run required")
+            confirmed = BrandLock.model_validate_json(row["confirmed_brand_lock_json"])
+            if brief.brand_lock != confirmed:
+                raise InvalidRunStateError("draft Brand Lock must match confirmation")
+            cursor = connection.execute(
+                """
+                UPDATE project_run_contexts
+                SET creative_brief_json = ?, ad_copy_json = ?,
+                    draft_rule_ids_json = ?, draft_generated_at = ?
+                WHERE run_id = ?
+                  AND creative_brief_json IS NULL
+                  AND ad_copy_json IS NULL
+                  AND draft_rule_ids_json IS NULL
+                  AND draft_generated_at IS NULL
+                """,
+                (
+                    brief.model_dump_json(),
+                    ad_copy.model_dump_json(),
+                    json.dumps(rule_ids, separators=(",", ":")),
+                    generation_time.isoformat(),
+                    str(run_id),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise DraftImmutableError("draft is immutable")
+        return DraftRecord(brief, ad_copy, rule_ids, generation_time)
 
     def get(self, run_id: UUID | str) -> ProjectRun:
         with self._connect() as connection:
