@@ -32,6 +32,7 @@ export interface FixtureResult {
   hypotheses: CulturalHypothesis[];
   warnings: string[];
   limitation: string;
+  draft: FixtureBundle["draft"];
   walkthrough: { title: string; description: string }[];
 }
 
@@ -60,6 +61,7 @@ export function composeFixtureResult(
     hypotheses: structuredClone(preview.hypotheses),
     warnings: [...preview.warnings],
     limitation: preview.limitation,
+    draft: structuredClone(fixture.draft),
     walkthrough: [
       { title: "1. Review source", description: "Confirm the supplied creative and direction." },
       { title: "2. Inspect proposal", description: "Compare the fixture-only localized composition." },

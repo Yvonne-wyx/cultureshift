@@ -1,4 +1,4 @@
-import type { BrandLock, CulturalHypothesis, RunCreate } from "../generated/contracts";
+import type { AdCopy, BrandLock, CulturalHypothesis, RunCreate } from "../generated/contracts";
 import { FIXTURE_DISCLOSURE, type FixtureBundle, type FixtureId } from "./types";
 
 type JsonObject = Record<string, unknown>;
@@ -222,12 +222,65 @@ export function validateFixture(raw: unknown, expectedId: FixtureId): Readonly<F
   const localized = object(preview.localized_copy, "invalid_shape");
   if (localized.locale !== targetLocale || localized.cta_action_meaning !== request.brand_lock.cta_action_meaning) invalid("brand_lock_mismatch");
   const sourceCopy = object(preview.source_copy, "invalid_shape");
+  const observedHypotheses = hypotheses(preview.hypotheses, targetMarket, hypothesisId, hypothesisEvidence);
+  const draft = object(fixture.draft, "invalid_draft");
+  const draftBrief = object(draft.brief, "invalid_draft");
+  const draftCopy = object(draft.copy, "invalid_draft");
+  const rawDraftLock = object(draftBrief.brand_lock, "invalid_draft");
+  if (!structuralEqual(rawDraftLock, request.brand_lock)) invalid("invalid_draft");
+  const draftLock = brandLock(rawDraftLock);
+  const draftHypotheses = draftBrief.hypotheses;
+  const draftRules = strings(draft.rule_ids, "invalid_draft");
+  const requiredPrompt = chinaToUk
+    ? "Use verified facts and ZEU-S1/ZEU-S3; preserve Brand Lock."
+    : "仅使用已验证事实与 EZC-S1/EZC-S3；保持品牌锁定。";
+  if (
+    draftBrief.direction !== request.direction ||
+    draftBrief.target_locale !== targetLocale ||
+    !structuralEqual(draftLock, request.brand_lock) ||
+    !structuralEqual(draftHypotheses, observedHypotheses) ||
+    !structuralEqual(draftRules, ruleIds) ||
+    !structuralEqual(draftRules, observedRules) ||
+    draftCopy.locale !== targetLocale ||
+    draftCopy.cta_action_meaning !== request.brand_lock.cta_action_meaning ||
+    draft.prompt_summary !== requiredPrompt
+  ) invalid("invalid_draft");
+  const validatedBrief: FixtureBundle["draft"]["brief"] = {
+    direction: request.direction,
+    target_locale: targetLocale,
+    brand_lock: draftLock,
+    hypotheses: observedHypotheses,
+    narrative: text(draftBrief.narrative, "invalid_draft"),
+    use_scenario: text(draftBrief.use_scenario, "invalid_draft"),
+    trust_information: text(draftBrief.trust_information, "invalid_draft"),
+  };
+  if (validatedBrief.trust_information !== FIXTURE_DISCLOSURE) invalid("invalid_draft");
+  const validatedCopy: AdCopy = {
+    locale: targetLocale,
+    headline: text(draftCopy.headline, "invalid_draft"),
+    body: text(draftCopy.body, "invalid_draft"),
+    cta_label: text(draftCopy.cta_label, "invalid_draft"),
+    cta_action_meaning: request.brand_lock.cta_action_meaning,
+  };
+  if (!structuralEqual(validatedCopy, {
+    locale: targetLocale,
+    headline: localized.headline,
+    body: localized.body,
+    cta_label: localized.cta_label,
+    cta_action_meaning: localized.cta_action_meaning,
+  })) invalid("invalid_draft");
   const bundle: FixtureBundle = {
     fixture_id: expectedId,
     disclosure: FIXTURE_DISCLOSURE,
     source_locale: sourceLocale,
     target_locale: targetLocale,
     request,
+    draft: {
+      brief: validatedBrief,
+      copy: validatedCopy,
+      rule_ids: draftRules,
+      prompt_summary: requiredPrompt,
+    },
     preview: {
       source_asset_path: sourceAssetPath,
       logo_asset_path: publicPath(preview.logo_asset_path),
@@ -242,7 +295,7 @@ export function validateFixture(raw: unknown, expectedId: FixtureId): Readonly<F
       },
       brand_lock: previewLock,
       rule_ids: observedRules,
-      hypotheses: hypotheses(preview.hypotheses, targetMarket, hypothesisId, hypothesisEvidence),
+      hypotheses: observedHypotheses,
       warnings: warningCodes,
       limitation,
     },

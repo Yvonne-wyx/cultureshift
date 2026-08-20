@@ -1,0 +1,17 @@
+.section {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #aeb8c4;
+  border-radius: .75rem;
+}
+.statusRow { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.label { color: #5d1600; font-weight: 800; }
+.brief { display: grid; gap: .75rem; }
+.brief div { padding: .75rem; background: #f2f6fa; border-radius: .5rem; }
+.brief dt { font-weight: 700; }
+.brief dd { margin: .25rem 0 0; }
+.copy, .hypothesis { padding: .75rem; border-left: .25rem solid #164a7b; }
+.section ul { padding-left: 1.5rem; }
+.limitation { color: #5d1600; font-weight: 700; }
+@media (max-width: 48rem) { .statusRow { align-items: flex-start; flex-direction: column; } }

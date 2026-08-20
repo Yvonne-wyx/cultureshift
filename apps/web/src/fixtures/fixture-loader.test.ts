@@ -90,6 +90,41 @@ describe("fixture loader", () => {
     });
   });
 
+  it("loads exact bilateral Day 11 draft evidence", () => {
+    expect(loadFixture("china-to-uk").draft).toMatchObject({
+      brief: { direction: "china_to_uk", target_locale: "en-GB" },
+      copy: { locale: "en-GB", cta_action_meaning: "Start a fixture demo" },
+      rule_ids: ["ZEU-S1", "ZEU-S3"],
+      prompt_summary: "Use verified facts and ZEU-S1/ZEU-S3; preserve Brand Lock.",
+    });
+    expect(loadFixture("uk-to-china").draft).toMatchObject({
+      brief: { direction: "uk_to_china", target_locale: "zh-CN" },
+      copy: { locale: "zh-CN", cta_action_meaning: "Start a fixture demo" },
+      rule_ids: ["EZC-S1", "EZC-S3"],
+      prompt_summary: "仅使用已验证事实与 EZC-S1/EZC-S3；保持品牌锁定。",
+    });
+  });
+
+  it("rejects Day 11 draft rule, lock, and hypothesis drift", () => {
+    expectInvalid((fixture) => {
+      const draft = fixture.draft as Record<string, unknown>;
+      draft.rule_ids = ["EZC-S1", "EZC-S3"];
+    }, "invalid_draft");
+    expectInvalid((fixture) => {
+      const draft = fixture.draft as Record<string, Record<string, unknown>>;
+      const brief = draft.brief;
+      brief.brand_lock = {
+        ...(brief.brand_lock as Record<string, unknown>),
+        product_name: SECRET,
+      };
+    }, "invalid_draft");
+    expectInvalid((fixture) => {
+      const draft = fixture.draft as Record<string, Record<string, unknown>>;
+      const hypotheses = draft.brief.hypotheses as Array<Record<string, unknown>>;
+      hypotheses[0].review_status = "accepted";
+    }, "invalid_draft");
+  });
+
   it.each([
     ["china-to-uk", "../../public/fixtures/orbit-ai/source-zh-cn.svg"],
     ["uk-to-china", "../../public/fixtures/orbit-ai/source-en-gb.svg"],

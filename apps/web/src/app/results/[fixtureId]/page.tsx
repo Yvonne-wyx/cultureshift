@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { FixtureBrandLockForm } from "../../../components/fixture-brand-lock-form";
+import { DraftEvidence } from "../../../components/draft-evidence";
 import { listFixtureIds, loadFixture } from "../../../fixtures/fixture-loader";
 import type { FixtureId } from "../../../fixtures/types";
 import { composeFixtureResult } from "../../../results/compose-fixture-result";
@@ -75,6 +76,8 @@ export default async function ResultPage({
       </section>
 
       <FixtureBrandLockForm fixture={fixture} />
+
+      <DraftEvidence draft={result.draft} disclosure={result.watermark} />
 
       <section className={styles.details} aria-labelledby="traceability-heading">
         <h2 id="traceability-heading">Traceability</h2>

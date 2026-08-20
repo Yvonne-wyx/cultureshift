@@ -1,5 +1,7 @@
 import type {
+  AdCopy,
   BrandLock,
+  CreativeBrief,
   CulturalHypothesis,
   RunCreate,
 } from "../generated/contracts";
@@ -14,6 +16,12 @@ export interface FixtureBundle {
   source_locale: "zh-CN" | "en-GB";
   target_locale: "zh-CN" | "en-GB";
   request: RunCreate;
+  draft: {
+    brief: Omit<CreativeBrief, "hypotheses"> & { hypotheses: CulturalHypothesis[] };
+    copy: AdCopy;
+    rule_ids: string[];
+    prompt_summary: string;
+  };
   preview: {
     source_asset_path: string;
     logo_asset_path: string;
