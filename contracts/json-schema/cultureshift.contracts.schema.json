@@ -491,6 +491,51 @@
       "title": "CulturalHypothesis",
       "type": "object"
     },
+    "DraftGenerated": {
+      "additionalProperties": false,
+      "properties": {
+        "brief": {
+          "$ref": "#/$defs/CreativeBrief"
+        },
+        "copy": {
+          "$ref": "#/$defs/AdCopy"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "rule_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "in_progress",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "brief",
+        "copy",
+        "rule_ids",
+        "generated_at"
+      ],
+      "title": "DraftGenerated",
+      "type": "object"
+    },
     "ExecutionMode": {
       "enum": [
         "fixture",
@@ -974,6 +1019,9 @@
     "cultural_hypothesis": {
       "$ref": "#/$defs/CulturalHypothesis"
     },
+    "draft_generated": {
+      "$ref": "#/$defs/DraftGenerated"
+    },
     "export_summary": {
       "$ref": "#/$defs/ExportSummary"
     },
@@ -1018,6 +1066,7 @@
     "analysis_completed",
     "brand_lock_confirmation",
     "brand_lock_confirmed",
+    "draft_generated",
     "job_accepted",
     "feedback_request",
     "retry_request",

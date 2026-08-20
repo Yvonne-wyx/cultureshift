@@ -14,6 +14,7 @@ from cultureshift.contracts import (
     BrandLockConfirmed,
     ContractRegistry,
     CulturalHypothesis,
+    DraftGenerated,
     ExecutionMode,
     Locale,
     Market,
@@ -104,6 +105,67 @@ def test_brand_lock_confirmation_contracts_are_closed(
         )
     with pytest.raises(ValidationError):
         BrandLockConfirmed.model_validate({**response.model_dump(), "status": "completed"})
+
+
+def _valid_draft_payload(valid_run_payload: dict[str, object]) -> dict[str, object]:
+    request = RunCreate.model_validate(valid_run_payload)
+    return {
+        "run_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "status": "in_progress",
+        "brief": {
+            "direction": "china_to_uk",
+            "target_locale": "en-GB",
+            "brand_lock": request.brand_lock,
+            "narrative": "A reviewable fixture narrative.",
+            "use_scenario": "An authorized fictional workflow.",
+            "trust_information": "Fixture Demo / 非实时模型",
+        },
+        "copy": {
+            "locale": "en-GB",
+            "headline": "Turn approved notes into clear task summaries",
+            "body": "Orbit AI helps teams organise approved meeting notes into task summaries.",
+            "cta_label": "Try the fixture demo",
+            "cta_action_meaning": request.brand_lock.cta_action_meaning,
+        },
+        "rule_ids": ["ZEU-S1", "ZEU-S3"],
+        "generated_at": "2026-08-20T09:00:00Z",
+    }
+
+
+def test_draft_generated_accepts_only_in_progress_directional_output(
+    valid_run_payload: dict[str, object],
+) -> None:
+    values = _valid_draft_payload(valid_run_payload)
+    response = DraftGenerated.model_validate(values)
+
+    assert response.status is RunStatus.IN_PROGRESS
+    assert response.rule_ids == ("ZEU-S1", "ZEU-S3")
+    assert DraftGenerated.model_validate_json(response.model_dump_json(by_alias=True)) == response
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("status",), "completed"),
+        (("brief", "target_locale"), "zh-CN"),
+        (("copy", "locale"), "zh-CN"),
+        (("copy", "cta_action_meaning"), "Download a file"),
+        (("rule_ids",), ["EZC-S1", "EZC-S3"]),
+    ],
+)
+def test_draft_generated_rejects_status_locale_cta_or_rule_drift(
+    valid_run_payload: dict[str, object],
+    path: tuple[str, ...],
+    value: object,
+) -> None:
+    values = _valid_draft_payload(valid_run_payload)
+    target = values
+    for segment in path[:-1]:
+        target = target[segment]  # type: ignore[assignment,index]
+    target[path[-1]] = value  # type: ignore[index]
+
+    with pytest.raises(ValidationError):
+        DraftGenerated.model_validate(values)
 
 
 def test_asset_ref_is_serializable_and_rejects_local_paths() -> None:

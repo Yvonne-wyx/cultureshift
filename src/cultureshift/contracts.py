@@ -294,6 +294,36 @@ class BrandLockConfirmed(ContractModel):
     confirmed_at: UtcDatetime
 
 
+class DraftGenerated(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.IN_PROGRESS]
+    brief: CreativeBrief
+    ad_copy: AdCopy = Field(alias="copy")
+    rule_ids: tuple[ShortText, ...] = Field(min_length=2, max_length=2)
+    generated_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def preserve_directional_constraints(self) -> Self:
+        expected = {
+            LocalizationDirection.CHINA_TO_UK: (
+                Locale.EN_GB,
+                ("ZEU-S1", "ZEU-S3"),
+            ),
+            LocalizationDirection.UK_TO_CHINA: (
+                Locale.ZH_CN,
+                ("EZC-S1", "EZC-S3"),
+            ),
+        }
+        locale, rule_ids = expected[self.brief.direction]
+        if self.brief.target_locale is not locale or self.ad_copy.locale is not locale:
+            raise ValueError("draft locale must match direction")
+        if self.ad_copy.cta_action_meaning != self.brief.brand_lock.cta_action_meaning:
+            raise ValueError("CTA action meaning must preserve Brand Lock")
+        if self.rule_ids != rule_ids:
+            raise ValueError("draft rule IDs must match direction")
+        return self
+
+
 class JobAccepted(ContractModel):
     run_id: UUID
     status: RunStatus
@@ -360,6 +390,7 @@ class ContractRegistry(ContractModel):
     analysis_completed: AnalysisCompleted
     brand_lock_confirmation: BrandLockConfirmation
     brand_lock_confirmed: BrandLockConfirmed
+    draft_generated: DraftGenerated
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
     retry_request: RetryRequest
