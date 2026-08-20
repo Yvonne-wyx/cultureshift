@@ -71,8 +71,10 @@ Add one public response contract, `DraftGenerated`, containing:
 - `rule_ids`, a unique bounded tuple of safe identifiers;
 - `generated_at`, a timezone-aware timestamp.
 
-`CreativeBrief` and `AdCopy` remain the existing public contracts. The response
-must validate that:
+`CreativeBrief` and `AdCopy` remain the existing public contracts. The public
+response validates its own direction, locale, CTA, and rule mapping; the generator
+validates it against trusted stored analysis and confirmation before constructing
+the response. Together they require that:
 
 - brief direction and target locale match;
 - brief Brand Lock equals the confirmed analysis Brand Lock;
@@ -186,4 +188,3 @@ Implementation follows test-driven development with observable RED then GREEN:
    fixture-only label, and human-review boundary.
 7. All focused and repository-wide quality gates pass, and Day 11 is recorded in
    the local `Day11.docx` using the established daily format.
-
