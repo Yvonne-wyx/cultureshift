@@ -116,18 +116,20 @@ class DraftGenerator:
         self,
         analysis: AdAnalysis,
         confirmed_brand_lock: BrandLock,
+        *,
+        direction: LocalizationDirection,
     ) -> DraftArtifacts:
         if analysis.brand_lock != confirmed_brand_lock:
             raise DraftGenerationError(DraftErrorCode.BRAND_LOCK_UNCONFIRMED)
 
-        fixture = _FIXTURES.get(self._direction_for_analysis(analysis))
+        fixture = _FIXTURES.get(direction)
         if fixture is None or analysis.detected_locale is not fixture.source_locale:
             raise DraftGenerationError(DraftErrorCode.OUTPUT_INVALID)
         if any(item.review_status != "pending" for item in analysis.hypotheses):
             raise DraftGenerationError(DraftErrorCode.OUTPUT_INVALID)
 
         brief = CreativeBrief(
-            direction=self._direction_for_analysis(analysis),
+            direction=direction,
             target_locale=fixture.target_locale,
             brand_lock=confirmed_brand_lock,
             hypotheses=analysis.hypotheses,
@@ -150,11 +152,3 @@ class DraftGenerator:
             fact_references=result.fact_references,
             rule_ids=result.rule_ids,
         )
-
-    @staticmethod
-    def _direction_for_analysis(analysis: AdAnalysis) -> LocalizationDirection:
-        if analysis.detected_locale is Locale.ZH_CN:
-            return LocalizationDirection.CHINA_TO_UK
-        if analysis.detected_locale is Locale.EN_GB:
-            return LocalizationDirection.UK_TO_CHINA
-        raise DraftGenerationError(DraftErrorCode.OUTPUT_INVALID)

@@ -565,7 +565,11 @@ def create_app(
                 detail={"code": "invalid_run_state"},
             )
         try:
-            generated = drafts.generate(analysis, confirmation.brand_lock)
+            generated = drafts.generate(
+                analysis,
+                confirmation.brand_lock,
+                direction=run.direction,
+            )
         except DraftGenerationError as error:
             status_code = (
                 status.HTTP_409_CONFLICT

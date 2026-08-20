@@ -1,8 +1,8 @@
 # Day 11 Brief and Copy Generation Design
 
-**Date:** 2026-08-20  
-**Task:** T07  
-**Owners:** Person A + Person B  
+**Date:** 2026-08-20
+**Task:** T07
+**Owners:** Person A + Person B
 **Status:** Approved product design; implementation pending
 
 ## Goal
@@ -48,7 +48,8 @@ stored run:
    requested run.
 2. Load the run and require `in_progress`, a completed Day 9 analysis, and the
    exact Day 10 confirmed Brand Lock.
-3. Select the direction-specific fixture prompt definition and exact rule IDs.
+3. Pass the trusted stored run direction explicitly, then select its fixture prompt
+   definition and exact rule IDs; never infer direction from provider-detected locale.
 4. Build a `CreativeBrief` by copying the trusted Brand Lock and pending cultural
    hypotheses, then add only approved fixture narrative fields.
 5. Ask the fixture copywriter for `AdCopy` through a provider-neutral protocol.

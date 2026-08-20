@@ -244,8 +244,8 @@ def test_generate_draft_sanitizes_generation_failure(tmp_path, valid_run_payload
     private_marker = r"C:\private\prompt.txt"
 
     class FailingGenerator(DraftGenerator):
-        def generate(self, analysis, confirmed_brand_lock):
-            del analysis, confirmed_brand_lock
+        def generate(self, analysis, confirmed_brand_lock, *, direction):
+            del analysis, confirmed_brand_lock, direction
             error = DraftGenerationError(DraftErrorCode.OUTPUT_INVALID)
             error.add_note(private_marker)
             raise error

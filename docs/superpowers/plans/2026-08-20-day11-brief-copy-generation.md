@@ -36,7 +36,7 @@
 
 **Interfaces:**
 - Consumes: existing `AdAnalysis`, `AdCopy`, `BrandLock`, `CreativeBrief`, `LocalizationDirection`, `Locale`, and `RunStatus`.
-- Produces: `DraftGenerated`, `DraftGenerationError`, `DraftErrorCode`, `Copywriter`, `CopywriterResult`, `FixtureCopywriter`, `DraftGenerator.generate(analysis, confirmed_brand_lock)`.
+- Produces: `DraftGenerated`, `DraftGenerationError`, `DraftErrorCode`, `Copywriter`, `CopywriterResult`, `FixtureCopywriter`, `DraftGenerator.generate(analysis, confirmed_brand_lock, *, direction)`.
 
 - [ ] **Step 1: Add failing public-contract tests**
 
@@ -113,7 +113,9 @@ brief/copy output and the complete fail-closed matrix:
     ],
 )
 def test_generator_returns_directional_factual_draft(analysis, direction, locale, rules):
-    result = DraftGenerator(FixtureCopywriter()).generate(analysis, analysis.brand_lock)
+    result = DraftGenerator(FixtureCopywriter()).generate(
+        analysis, analysis.brand_lock, direction=direction
+    )
     assert result.brief.direction is direction
     assert result.ad_copy.locale is locale
     assert result.rule_ids == rules
@@ -170,7 +172,9 @@ scenario, trust text, headline, body, and CTA label. `DraftGenerator.generate` m
 5. require exact locale, CTA meaning, rule IDs, and fact references;
 6. return a small internal result containing brief, copy, rule IDs, and fact references.
 
-`FixtureCopywriter` returns the existing bilingual fixture copy and exactly the
+The caller passes the trusted stored run direction explicitly; the generator rejects
+a provider-detected source locale inconsistent with that direction. `FixtureCopywriter`
+returns the existing bilingual fixture copy and exactly the
 confirmed `verified_product_facts`; it performs no I/O.
 
 - [ ] **Step 7: Verify focused GREEN and regenerate contracts**

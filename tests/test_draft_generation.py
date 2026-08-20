@@ -77,7 +77,11 @@ def test_generator_returns_deterministic_bilateral_factual_draft(
 ) -> None:
     analysis = _analysis(valid_run_payload, direction)
 
-    result = DraftGenerator(FixtureCopywriter()).generate(analysis, analysis.brand_lock)
+    result = DraftGenerator(FixtureCopywriter()).generate(
+        analysis,
+        analysis.brand_lock,
+        direction=direction,
+    )
 
     assert result.brief.direction is direction
     assert result.ad_copy.locale == locale
@@ -122,7 +126,11 @@ def test_generator_rejects_unconfirmed_brand_lock_before_writer_call(
     changed = analysis.brand_lock.model_copy(update={"product_name": "Changed"})
 
     with pytest.raises(DraftGenerationError) as caught:
-        DraftGenerator(writer).generate(analysis, changed)
+        DraftGenerator(writer).generate(
+            analysis,
+            changed,
+            direction=LocalizationDirection.CHINA_TO_UK,
+        )
 
     assert caught.value.code is DraftErrorCode.BRAND_LOCK_UNCONFIRMED
     assert writer.calls == 0
@@ -150,7 +158,11 @@ def test_generator_rejects_unsafe_copywriter_output(
         )
 
     with pytest.raises(DraftGenerationError) as caught:
-        DraftGenerator(RecordingWriter(forged)).generate(analysis, analysis.brand_lock)
+        DraftGenerator(RecordingWriter(forged)).generate(
+            analysis,
+            analysis.brand_lock,
+            direction=LocalizationDirection.CHINA_TO_UK,
+        )
 
     assert caught.value.code is DraftErrorCode.OUTPUT_INVALID
 
@@ -163,6 +175,25 @@ def test_generator_never_promotes_a_hypothesis_to_fact(
     analysis = analysis.model_copy(update={"hypotheses": (accepted,)})
 
     with pytest.raises(DraftGenerationError) as caught:
-        DraftGenerator(FixtureCopywriter()).generate(analysis, analysis.brand_lock)
+        DraftGenerator(FixtureCopywriter()).generate(
+            analysis,
+            analysis.brand_lock,
+            direction=LocalizationDirection.CHINA_TO_UK,
+        )
+
+    assert caught.value.code is DraftErrorCode.OUTPUT_INVALID
+
+
+def test_generator_uses_trusted_run_direction_not_detected_locale(
+    valid_run_payload: dict[str, Any],
+) -> None:
+    analysis = _analysis(valid_run_payload, LocalizationDirection.UK_TO_CHINA)
+
+    with pytest.raises(DraftGenerationError) as caught:
+        DraftGenerator(FixtureCopywriter()).generate(
+            analysis,
+            analysis.brand_lock,
+            direction=LocalizationDirection.CHINA_TO_UK,
+        )
 
     assert caught.value.code is DraftErrorCode.OUTPUT_INVALID

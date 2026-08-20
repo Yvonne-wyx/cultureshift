@@ -282,7 +282,11 @@ def test_repository_saves_and_replays_one_immutable_draft(
     repository.confirm_brand_lock(run.id, analyzed)
     analysis = repository.get_analysis(run.id)
     assert analysis is not None
-    draft = DraftGenerator(FixtureCopywriter()).generate(analysis, analyzed)
+    draft = DraftGenerator(FixtureCopywriter()).generate(
+        analysis,
+        analyzed,
+        direction=run.direction,
+    )
     generated_at = datetime(2026, 8, 20, 10, 0, tzinfo=UTC)
 
     first = repository.save_draft(
@@ -320,7 +324,11 @@ def test_repository_rejects_draft_before_brand_lock_confirmation(
     run, analyzed = analyzed_run(repository, valid_run_payload)
     analysis = repository.get_analysis(run.id)
     assert analysis is not None
-    draft = DraftGenerator(FixtureCopywriter()).generate(analysis, analyzed)
+    draft = DraftGenerator(FixtureCopywriter()).generate(
+        analysis,
+        analyzed,
+        direction=run.direction,
+    )
 
     with pytest.raises(InvalidRunStateError):
         repository.save_draft(
