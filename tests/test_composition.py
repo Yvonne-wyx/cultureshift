@@ -11,6 +11,8 @@ from cultureshift.composition import (
     CompositionError,
     CompositionErrorCode,
     PillowCompositor,
+    _text_layer,
+    _wrap_text,
 )
 from cultureshift.contracts import AdCopy, AssetKind, BrandLock, Locale
 from cultureshift.domain import LocalizationDirection
@@ -43,7 +45,11 @@ def _asset(asset_id: str, kind: AssetKind, data: bytes) -> RegisteredFixtureAsse
     )
 
 
-def _request(*, product_ui: RegisteredFixtureAsset | None = None) -> ComposeRequest:
+def _request(
+    *,
+    direction: LocalizationDirection = LocalizationDirection.CHINA_TO_UK,
+    product_ui: RegisteredFixtureAsset | None = None,
+) -> ComposeRequest:
     brand_lock = BrandLock(
         logo_asset_id=LOGO_ID,
         product_name="Orbit AI",
@@ -56,8 +62,12 @@ def _request(*, product_ui: RegisteredFixtureAsset | None = None) -> ComposeRequ
     )
     background = FixtureImageProvider().generate_background(
         BackgroundRequest(
-            direction=LocalizationDirection.CHINA_TO_UK,
-            target_locale=Locale.EN_GB,
+            direction=direction,
+            target_locale=(
+                Locale.EN_GB
+                if direction is LocalizationDirection.CHINA_TO_UK
+                else Locale.ZH_CN
+            ),
             narrative="quiet abstract workspace",
             use_scenario="open space reserved for deterministic locked layers",
         )
@@ -66,12 +76,22 @@ def _request(*, product_ui: RegisteredFixtureAsset | None = None) -> ComposeRequ
         run_id=uuid4(),
         background=background,
         brand_lock=brand_lock,
-        ad_copy=AdCopy(
-            locale=Locale.EN_GB,
-            headline="Turn approved notes into clear task summaries",
-            body="Orbit AI helps teams organise approved meeting notes into task summaries.",
-            cta_label="Try the fixture demo",
-            cta_action_meaning="Start a fixture demo",
+        ad_copy=(
+            AdCopy(
+                locale=Locale.EN_GB,
+                headline="Turn approved notes into clear task summaries",
+                body="Orbit AI helps teams organise approved meeting notes into task summaries.",
+                cta_label="Try the fixture demo",
+                cta_action_meaning="Start a fixture demo",
+            )
+            if direction is LocalizationDirection.CHINA_TO_UK
+            else AdCopy(
+                locale=Locale.ZH_CN,
+                headline="把已批准笔记整理成清晰任务摘要",
+                body="Orbit AI 帮助团队将已批准的会议笔记整理为任务摘要。",
+                cta_label="体验示例演示",
+                cta_action_meaning="Start a fixture demo",
+            )
         ),
         logo=_asset(LOGO_ID, AssetKind.LOGO, _png((480, 160), (22, 74, 123, 255))),
         product_ui=product_ui or _asset(
@@ -92,8 +112,14 @@ def _approved_contain(data: bytes, maximum: tuple[int, int]) -> Image.Image:
     return image
 
 
-def test_compositor_preserves_locked_logo_and_ui_decoded_pixels() -> None:
-    request = _request()
+@pytest.mark.parametrize(
+    "direction",
+    [LocalizationDirection.CHINA_TO_UK, LocalizationDirection.UK_TO_CHINA],
+)
+def test_compositor_preserves_locked_logo_and_ui_decoded_pixels(
+    direction: LocalizationDirection,
+) -> None:
+    request = _request(direction=direction)
     result = PillowCompositor().compose(request)
 
     logo = _decoded_rgba(result.layer_png("logo"))
@@ -109,6 +135,68 @@ def test_compositor_preserves_locked_logo_and_ui_decoded_pixels() -> None:
     assert ui.getbbox() == expected_ui.getbbox()
     assert sha256(ui.tobytes()).hexdigest() == sha256(expected_ui.tobytes()).hexdigest()
     assert result.layer("product_ui").source_asset_id == request.brand_lock.product_ui_asset_ids[0]
+
+
+def test_wrap_text_is_deterministic_for_english_cjk_and_mixed_copy() -> None:
+    font = ImageFont.truetype(str(FONT_PATH), 34)
+    english_width = int(max(font.getlength("Trusted AI"), font.getlength("workflows"))) + 1
+    assert _wrap_text(font, "Trusted AI workflows", english_width, 3) == (
+        "Trusted AI",
+        "workflows",
+    )
+
+    cjk_width = int(font.getlength("可信赖的")) + 1
+    assert _wrap_text(font, "可信赖的人工智能", cjk_width, 2) == (
+        "可信赖的",
+        "人工智能",
+    )
+
+    mixed_width = int(font.getlength("团队使用 Orbit")) + 1
+    first = _wrap_text(font, "团队使用 Orbit 360 平台", mixed_width, 4)
+    assert first == _wrap_text(font, "  团队使用  Orbit 360  平台  ", mixed_width, 4)
+    assert "".join(first).replace(" ", "") == "团队使用Orbit360平台"
+
+
+def test_text_layer_fails_closed_instead_of_truncating() -> None:
+    with pytest.raises(CompositionError) as caught:
+        _text_layer(
+            FONT_PATH,
+            "one two three four five six seven eight nine ten",
+            (90, 40),
+            start_font=18,
+            minimum_font=18,
+            maximum_lines=1,
+            colour="#000000",
+        )
+    assert caught.value.code is CompositionErrorCode.INVALID_OUTPUT
+
+
+@pytest.mark.parametrize(
+    ("text", "size", "start_font", "minimum_font", "maximum_lines"),
+    [
+        ("Turn approved notes into clear task summaries", (660, 124), 58, 24, 2),
+        ("Try the fixture demo", (330, 76), 34, 24, 2),
+    ],
+)
+def test_multiline_text_is_vertically_centered_without_clipping(
+    text: str,
+    size: tuple[int, int],
+    start_font: int,
+    minimum_font: int,
+    maximum_lines: int,
+) -> None:
+    rendered = _text_layer(
+        FONT_PATH,
+        text,
+        size,
+        start_font=start_font,
+        minimum_font=minimum_font,
+        maximum_lines=maximum_lines,
+        colour="#ffffff",
+    )
+    alpha_bounds = rendered.getchannel("A").getbbox()
+    assert alpha_bounds is not None
+    assert 0 < alpha_bounds[1] < alpha_bounds[3] < size[1]
 
 
 def test_compositor_is_deterministic_fixed_size_and_fixed_order() -> None:

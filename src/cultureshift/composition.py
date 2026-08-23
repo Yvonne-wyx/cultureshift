@@ -102,13 +102,93 @@ def _font(path: Path, size: int) -> ImageFont.FreeTypeFont:
         raise CompositionError(CompositionErrorCode.INVALID_OUTPUT) from error
 
 
+def _is_cjk(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        0x3400 <= codepoint <= 0x4DBF
+        or 0x4E00 <= codepoint <= 0x9FFF
+        or 0xF900 <= codepoint <= 0xFAFF
+    )
+
+
+def _text_units(text: str) -> tuple[tuple[str, bool], ...]:
+    normalized = " ".join(text.split())
+    if not normalized:
+        raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
+    units: list[tuple[str, bool]] = []
+    index = 0
+    separated = False
+    while index < len(normalized):
+        character = normalized[index]
+        if character == " ":
+            separated = True
+            index += 1
+            continue
+        if _is_cjk(character):
+            units.append((character, separated))
+            separated = False
+            index += 1
+            continue
+        end = index + 1
+        while end < len(normalized) and normalized[end] != " " and not _is_cjk(normalized[end]):
+            end += 1
+        units.append((normalized[index:end], separated))
+        separated = False
+        index = end
+    return tuple(units)
+
+
+def _wrap_text(
+    font: ImageFont.FreeTypeFont,
+    text: str,
+    maximum_width: int,
+    maximum_lines: int,
+) -> tuple[str, ...]:
+    if maximum_width <= 0 or maximum_lines <= 0:
+        raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
+    lines: list[str] = []
+    current = ""
+    for unit, separated in _text_units(text):
+        prefix = " " if current and separated else ""
+        candidate = f"{current}{prefix}{unit}"
+        if font.getlength(candidate) <= maximum_width:
+            current = candidate
+            continue
+        if not current or font.getlength(unit) > maximum_width:
+            raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
+        lines.append(current)
+        if len(lines) >= maximum_lines:
+            raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
+        current = unit
+    if current:
+        lines.append(current)
+    if not lines or len(lines) > maximum_lines:
+        raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
+    return tuple(lines)
+
+
 def _fit_font(
-    path: Path, text: str, width: int, start: int, minimum: int
-) -> ImageFont.FreeTypeFont:
+    path: Path,
+    text: str,
+    width: int,
+    height: int,
+    start: int,
+    minimum: int,
+    maximum_lines: int,
+) -> tuple[ImageFont.FreeTypeFont, tuple[str, ...], int]:
     for size in range(start, minimum - 1, -2):
         candidate = _font(path, size)
-        if candidate.getbbox(text)[2] <= width:
-            return candidate
+        try:
+            lines = _wrap_text(candidate, text, width, maximum_lines)
+        except CompositionError:
+            continue
+        spacing = max(2, size // 6)
+        probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+        bounds = probe.multiline_textbbox(
+            (0, 0), "\n".join(lines), font=candidate, spacing=spacing
+        )
+        if bounds[2] - bounds[0] <= width and bounds[3] - bounds[1] <= height:
+            return candidate, lines, spacing
     raise CompositionError(CompositionErrorCode.INVALID_OUTPUT)
 
 
@@ -119,6 +199,7 @@ def _text_layer(
     *,
     start_font: int,
     minimum_font: int,
+    maximum_lines: int,
     colour: str,
     background: str | None = None,
 ) -> Image.Image:
@@ -126,10 +207,19 @@ def _text_layer(
     draw = ImageDraw.Draw(image)
     if background is not None:
         draw.rounded_rectangle((0, 0, size[0] - 1, size[1] - 1), radius=18, fill=background)
-    font = _fit_font(path, text, size[0] - 24, start_font, minimum_font)
-    box = draw.textbbox((0, 0), text, font=font)
-    y = max(0, (size[1] - (box[3] - box[1])) // 2 - box[1])
-    draw.text((12, y), text, font=font, fill=colour)
+    font, lines, spacing = _fit_font(
+        path,
+        text,
+        size[0] - 24,
+        size[1],
+        start_font,
+        minimum_font,
+        maximum_lines,
+    )
+    rendered = "\n".join(lines)
+    box = draw.multiline_textbbox((0, 0), rendered, font=font, spacing=spacing)
+    y = (size[1] - (box[3] - box[1])) // 2 - box[1]
+    draw.multiline_text((12, y), rendered, font=font, spacing=spacing, fill=colour)
     return image
 
 
@@ -177,6 +267,7 @@ class PillowCompositor:
             (660, 124),
             start_font=58,
             minimum_font=24,
+            maximum_lines=2,
             colour="#102f4a",
         )
         body = _text_layer(
@@ -185,6 +276,7 @@ class PillowCompositor:
             (680, 86),
             start_font=34,
             minimum_font=16,
+            maximum_lines=3,
             colour="#27475f",
         )
         cta = _text_layer(
@@ -193,6 +285,7 @@ class PillowCompositor:
             (330, 76),
             start_font=34,
             minimum_font=24,
+            maximum_lines=2,
             colour="#ffffff",
             background="#164a7b",
         )
@@ -202,6 +295,7 @@ class PillowCompositor:
             (430, 44),
             start_font=22,
             minimum_font=18,
+            maximum_lines=1,
             colour="#5d1600",
             background="#ffe3d9",
         )

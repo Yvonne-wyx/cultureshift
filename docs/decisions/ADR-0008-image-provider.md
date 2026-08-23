@@ -32,3 +32,18 @@ the same deterministic protected-layer boundary.
 Day 12 and CI remain deterministic, offline, reproducible, and honest about fixture execution.
 The implementation cannot make claims about live image quality or provider fitness. Full export
 and provider comparison remain later work.
+
+## Day 13 export boundary
+
+Day 13 adds read-only export of an already persisted fixture composition. It does not generate a
+new background, extend artifact retention, mutate the run, or select a live provider. Before PNG
+delivery, the server verifies the opaque artifact identifier, 24-hour TTL, byte size, SHA-256,
+PNG decoding, and fixed 1600 x 900 dimensions against the immutable public composition summary.
+The JSON attachment is a canonical serialization of only that bounded public summary.
+
+Logo and product UI continue to resolve from the closed fixture registry through confirmed Brand
+Lock identifiers. Public upload is limited to the authorized source advertisement and cannot
+replace a locked Logo, product UI, or layout template. Golden decoded-RGBA checks, fixed geometry,
+and deterministic English/Simplified Chinese wrapping provide technical preservation evidence;
+they are not cultural, legal, brand, performance, or production approval. A live image provider
+still requires a separate approved ADR satisfying every gate above.

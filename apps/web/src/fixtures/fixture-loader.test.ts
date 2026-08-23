@@ -92,8 +92,8 @@ describe("fixture loader", () => {
   });
 
   it.each([
-    ["china-to-uk", "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615", "../../public/fixtures/orbit-ai/composed-china-to-uk.png"],
-    ["uk-to-china", "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c", "../../public/fixtures/orbit-ai/composed-uk-to-china.png"],
+    ["china-to-uk", "39d3233aa64533558579a5d9ad0ff345105555ea4ae69dfd8c26f5faaddb0d15", "../../public/fixtures/orbit-ai/composed-china-to-uk.png"],
+    ["uk-to-china", "e64f1342a728d561c141accf9cf78b5d43f251b5f550cf7be616a00da049517f", "../../public/fixtures/orbit-ai/composed-uk-to-china.png"],
   ] as const)("loads exact Day 12 composition evidence for %s", (fixtureId, sha256, previewPath) => {
     const fixture = loadFixture(fixtureId);
     expect(fixture.composition).toMatchObject({

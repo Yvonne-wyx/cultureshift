@@ -1,5 +1,7 @@
+import hashlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -9,13 +11,18 @@ from cultureshift.analysis_provider import FakeProvider, VisionProvider, VisionP
 from cultureshift.app import create_app
 from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
+from cultureshift.composition import PillowCompositor
+from cultureshift.composition_export import CompositionExportService
 from cultureshift.composition_service import CompositionService
+from cultureshift.composition_storage import CompositionArtifactStore
 from cultureshift.draft_generation import (
     DraftErrorCode,
     DraftGenerationError,
     DraftGenerator,
     FixtureCopywriter,
 )
+from cultureshift.fixture_assets import FixtureAssetRegistry
+from cultureshift.image_provider import FixtureImageProvider
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import SQLiteProjectRunRepository
 
@@ -27,9 +34,22 @@ def make_client(
     analysis_provider: VisionProvider | None = None,
     draft_generator: DraftGenerator | None = None,
     composition_service: CompositionService | None = None,
+    composition_export_service: CompositionExportService | None = None,
 ) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    composition_store = CompositionArtifactStore(tmp_path / "compositions")
+    compositions = composition_service or CompositionService(
+        repository,
+        FixtureImageProvider(),
+        FixtureAssetRegistry(),
+        PillowCompositor(),
+        composition_store,
+        Path("assets/fonts/NotoSansCJKsc-Regular.otf"),
+    )
+    exports = composition_export_service or CompositionExportService(
+        repository, composition_store
+    )
     return (
         TestClient(
             create_app(
@@ -39,7 +59,8 @@ def make_client(
                 upload_rate_limiter=upload_rate_limiter,
                 analysis_provider=analysis_provider,
                 draft_generator=draft_generator,
-                composition_service=composition_service,
+                composition_service=compositions,
+                composition_export_service=exports,
             )
         ),
         repository,
@@ -258,6 +279,117 @@ def test_composition_endpoint_requires_capability_and_day11_draft(
     assert missing.json() == {"detail": {"code": "invalid_capability"}}
     assert no_draft.status_code == 409
     assert no_draft.json() == {"detail": {"code": "draft_unavailable"}}
+
+
+def test_composition_exports_are_authenticated_integrity_checked_attachments(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_drafted_fixture_run(client, valid_run_payload)
+        generated = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        png = client.get(
+            f"/api/v1/runs/{run_id}/composition.png",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        metadata = client.get(
+            f"/api/v1/runs/{run_id}/composition.json",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert generated.status_code == png.status_code == metadata.status_code == 200
+    assert png.headers["content-type"] == "image/png"
+    assert png.headers["content-disposition"] == (
+        f'attachment; filename="cultureshift-{run_id}.png"'
+    )
+    assert png.headers["x-content-type-options"] == "nosniff"
+    assert metadata.headers["content-type"] == "application/json"
+    assert metadata.headers["content-disposition"] == (
+        f'attachment; filename="cultureshift-{run_id}.json"'
+    )
+    assert metadata.content.endswith(b"\n")
+    assert metadata.json() == generated.json()
+    assert hashlib.sha256(png.content).hexdigest() == metadata.json()["rendered_sha256"]
+    assert "path" not in metadata.text.casefold()
+    assert token not in metadata.text
+
+
+@pytest.mark.parametrize("suffix", ["composition.png", "composition.json"])
+def test_composition_exports_require_read_scope_and_matching_subject(
+    tmp_path, valid_run_payload, suffix: str
+) -> None:
+    client, _ = make_client(tmp_path)
+    signing = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
+    with client:
+        run_id, _ = create_run(client, valid_run_payload)
+        update_only = signing.issue(
+            subject=run_id,
+            capabilities={Capability.UPDATE_PROJECT_RUN},
+            ttl=timedelta(minutes=5),
+        )
+        wrong_subject = signing.issue(
+            subject=str(uuid4()),
+            capabilities={Capability.READ_PROJECT_RUN},
+            ttl=timedelta(minutes=5),
+        )
+        wrong_scope = client.get(
+            f"/api/v1/runs/{run_id}/{suffix}",
+            headers={"Authorization": f"Bearer {update_only}"},
+        )
+        mismatch = client.get(
+            f"/api/v1/runs/{run_id}/{suffix}",
+            headers={"Authorization": f"Bearer {wrong_subject}"},
+        )
+
+    assert wrong_scope.status_code == 401
+    assert wrong_scope.json() == {"detail": {"code": "invalid_capability"}}
+    assert mismatch.status_code == 403
+    assert mismatch.json() == {"detail": {"code": "capability_subject_mismatch"}}
+    assert update_only not in wrong_scope.text
+    assert wrong_subject not in mismatch.text
+
+
+def test_composition_exports_report_missing_composition_without_private_data(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_run(client, valid_run_payload)
+        response = client.get(
+            f"/api/v1/runs/{run_id}/composition.png",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "composition_unavailable"}}
+    assert token not in response.text
+
+
+def test_composition_png_export_maps_missing_artifact_to_bounded_gone_error(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_drafted_fixture_run(client, valid_run_payload)
+        generated = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        artifact_id = generated.json()["artifact_id"]
+        (tmp_path / "compositions" / f"{artifact_id}.png").unlink()
+        response = client.get(
+            f"/api/v1/runs/{run_id}/composition.png",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {"code": "composition_artifact_unavailable"}
+    }
+    assert token not in response.text
 
 
 @pytest.mark.parametrize(

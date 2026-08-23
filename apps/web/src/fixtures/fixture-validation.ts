@@ -51,12 +51,12 @@ const APPROVED_SOURCE_BY_FIXTURE = deepFreeze({
 const APPROVED_COMPOSITION_BY_FIXTURE = deepFreeze({
   "china-to-uk": {
     preview_path: "/fixtures/orbit-ai/composed-china-to-uk.png",
-    rendered_sha256: "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615",
+    rendered_sha256: "39d3233aa64533558579a5d9ad0ff345105555ea4ae69dfd8c26f5faaddb0d15",
     background_provenance: "fixture:day12-background-china_to_uk",
   },
   "uk-to-china": {
     preview_path: "/fixtures/orbit-ai/composed-uk-to-china.png",
-    rendered_sha256: "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c",
+    rendered_sha256: "e64f1342a728d561c141accf9cf78b5d43f251b5f550cf7be616a00da049517f",
     background_provenance: "fixture:day12-background-uk_to_china",
   },
 } as const);

@@ -119,7 +119,7 @@
       "id": "orbit-ai-composed-china-to-uk-day12",
       "asset_type": "fixture_composition",
       "asset_path": "apps/web/public/fixtures/orbit-ai/composed-china-to-uk.png",
-      "sha256": "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615",
+      "sha256": "39d3233aa64533558579a5d9ad0ff345105555ea4ae69dfd8c26f5faaddb0d15",
       "provenance": {
         "source_class": "generated_content",
         "description": "Deterministic China-to-UK Day 12 composition built from registered project fixtures."
@@ -138,7 +138,7 @@
       "id": "orbit-ai-composed-uk-to-china-day12",
       "asset_type": "fixture_composition",
       "asset_path": "apps/web/public/fixtures/orbit-ai/composed-uk-to-china.png",
-      "sha256": "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c",
+      "sha256": "e64f1342a728d561c141accf9cf78b5d43f251b5f550cf7be616a00da049517f",
       "provenance": {
         "source_class": "generated_content",
         "description": "Deterministic UK-to-China Day 12 composition built from registered project fixtures."

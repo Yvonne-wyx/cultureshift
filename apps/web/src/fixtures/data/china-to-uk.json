@@ -71,15 +71,15 @@
     "height": 900,
     "media_type": "image/png",
     "preview_path": "/fixtures/orbit-ai/composed-china-to-uk.png",
-    "rendered_sha256": "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615",
+    "rendered_sha256": "39d3233aa64533558579a5d9ad0ff345105555ea4ae69dfd8c26f5faaddb0d15",
     "background_provenance": "fixture:day12-background-china_to_uk",
     "layers": [
       {"kind":"background","source_asset_id":null,"rgba_sha256":"075939cacde32a6044e406a182f8f407d29c864d6c73ac834292305cb5b17e1a","bounds":[0,0,1600,900],"width":1600,"height":900},
       {"kind":"product_ui","source_asset_id":"a2222222-2222-4222-8222-222222222222","rgba_sha256":"02e0fa2e2808c5214d9ded66e183cc67b1dcd532c4d5589a65e37146fc594f5b","bounds":[850,170,1500,615],"width":650,"height":445},
       {"kind":"logo","source_asset_id":"a1111111-1111-4111-8111-111111111111","rgba_sha256":"8da108b98f483f3d2a2b8ee6daa2ed5b674f2d74d84847788aab12a9940f8ab0","bounds":[100,70,320,143],"width":220,"height":73},
-      {"kind":"headline","source_asset_id":null,"rgba_sha256":"f9a0cb07b394c407f8f11759309ab93b9fa29e3b50c510ac414ccced63600289","bounds":[100,220,760,344],"width":660,"height":124},
-      {"kind":"body","source_asset_id":null,"rgba_sha256":"0dd34883b381417706c8a8da3726ec73b3235daccc3ed80542144bc7ff99b3d0","bounds":[100,390,780,476],"width":680,"height":86},
-      {"kind":"cta","source_asset_id":null,"rgba_sha256":"efdac8708d4d1063cb3327fd9e9e00de7f92fa9b689f927e6faf37340641c40f","bounds":[100,560,430,636],"width":330,"height":76},
+      {"kind":"headline","source_asset_id":null,"rgba_sha256":"a5a56fd136ec25cdda916f1102cfeaee3967fcdc02489b02181858325fb3bebd","bounds":[100,220,760,344],"width":660,"height":124},
+      {"kind":"body","source_asset_id":null,"rgba_sha256":"e80ae65409283eaafd4314e333b47b53e9146d56b4111cc69f6ad28a4c8664f9","bounds":[100,390,780,476],"width":680,"height":86},
+      {"kind":"cta","source_asset_id":null,"rgba_sha256":"f6a20c7cb710aa3b1765bb10a98720c61a938b32007454fc96668e9b3264706f","bounds":[100,560,430,636],"width":330,"height":76},
       {"kind":"disclosure","source_asset_id":null,"rgba_sha256":"b80e30531168370ab9b7d75fa01729291c17211088a014d27f5de851a77c41dc","bounds":[100,820,530,864],"width":430,"height":44}
     ],
     "font": {

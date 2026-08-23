@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from cultureshift.analysis_pipeline import (
     AnalysisErrorCode,
@@ -39,6 +39,11 @@ from cultureshift.capability_tokens import (
     CapabilityTokenService,
 )
 from cultureshift.composition import PillowCompositor
+from cultureshift.composition_export import (
+    CompositionExportError,
+    CompositionExportErrorCode,
+    CompositionExportService,
+)
 from cultureshift.composition_service import (
     CompositionService,
     CompositionServiceError,
@@ -102,6 +107,7 @@ def create_app(
     analysis_provider: VisionProvider | None = None,
     draft_generator: DraftGenerator | None = None,
     composition_service: CompositionService | None = None,
+    composition_export_service: CompositionExportService | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -112,13 +118,17 @@ def create_app(
     provider = analysis_provider or FixtureProvider()
     drafts = draft_generator or DraftGenerator(FixtureCopywriter())
     temporary_root = Path(os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", ".cultureshift/assets"))
+    composition_store = CompositionArtifactStore(temporary_root / "compositions")
     compositions = composition_service or CompositionService(
         runs,
         FixtureImageProvider(),
         FixtureAssetRegistry(),
         PillowCompositor(),
-        CompositionArtifactStore(temporary_root / "compositions"),
+        composition_store,
         Path(__file__).resolve().parents[2] / "assets" / "fonts" / "NotoSansCJKsc-Regular.otf",
+    )
+    composition_exports = composition_export_service or CompositionExportService(
+        runs, composition_store
     )
 
     @asynccontextmanager
@@ -671,6 +681,72 @@ def create_app(
                 status_code=status_code,
                 detail={"code": error.code.value},
             ) from None
+
+    def require_composition_read_capability(run_id: UUID, request: Request) -> None:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.READ_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+
+    def export_failure(error: CompositionExportError) -> HTTPException:
+        if error.code is CompositionExportErrorCode.RUN_NOT_FOUND:
+            status_code = status.HTTP_404_NOT_FOUND
+        elif error.code is CompositionExportErrorCode.COMPOSITION_UNAVAILABLE:
+            status_code = status.HTTP_409_CONFLICT
+        else:
+            status_code = status.HTTP_410_GONE
+        return HTTPException(status_code=status_code, detail={"code": error.code.value})
+
+    @application.get("/api/v1/runs/{run_id}/composition.png", tags=["runs"])
+    def export_composition_png(run_id: UUID, request: Request) -> Response:
+        require_composition_read_capability(run_id, request)
+        try:
+            exported = composition_exports.export_png(run_id)
+        except CompositionExportError as error:
+            raise export_failure(error) from None
+        return Response(
+            content=exported.png_bytes,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="cultureshift-{run_id}.png"'
+                ),
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @application.get("/api/v1/runs/{run_id}/composition.json", tags=["runs"])
+    def export_composition_json(run_id: UUID, request: Request) -> Response:
+        require_composition_read_capability(run_id, request)
+        try:
+            encoded = composition_exports.export_json(run_id)
+        except CompositionExportError as error:
+            raise export_failure(error) from None
+        return Response(
+            content=encoded,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="cultureshift-{run_id}.json"'
+                ),
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     return application
 
