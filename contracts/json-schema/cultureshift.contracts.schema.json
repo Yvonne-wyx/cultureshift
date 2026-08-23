@@ -208,6 +208,72 @@
       "title": "AssetUploaded",
       "type": "object"
     },
+    "BackgroundRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/LocalizationDirection"
+        },
+        "height": {
+          "const": 900,
+          "default": 900,
+          "title": "Height",
+          "type": "integer"
+        },
+        "narrative": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Narrative",
+          "type": "string"
+        },
+        "prohibited_content": {
+          "default": [
+            "logo",
+            "brand_name",
+            "product_ui",
+            "statistics",
+            "claims",
+            "long_text"
+          ],
+          "items": {
+            "enum": [
+              "logo",
+              "brand_name",
+              "product_ui",
+              "statistics",
+              "claims",
+              "long_text"
+            ],
+            "type": "string"
+          },
+          "title": "Prohibited Content",
+          "type": "array"
+        },
+        "target_locale": {
+          "$ref": "#/$defs/Locale"
+        },
+        "use_scenario": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Use Scenario",
+          "type": "string"
+        },
+        "width": {
+          "const": 1600,
+          "default": 1600,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "direction",
+        "target_locale",
+        "narrative",
+        "use_scenario"
+      ],
+      "title": "BackgroundRequest",
+      "type": "object"
+    },
     "BrandLock": {
       "additionalProperties": false,
       "properties": {
@@ -334,6 +400,160 @@
         "confirmed_at"
       ],
       "title": "BrandLockConfirmed",
+      "type": "object"
+    },
+    "CompositionGenerated": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "format": "uuid",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "disclosure": {
+          "const": "Fixture Demo / 非实时模型",
+          "title": "Disclosure",
+          "type": "string"
+        },
+        "execution_mode": {
+          "const": "fixture",
+          "title": "FixtureCompositionExecutionMode",
+          "type": "string"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "height": {
+          "const": 900,
+          "title": "Height",
+          "type": "integer"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/CompositionLayer"
+          },
+          "maxItems": 7,
+          "minItems": 6,
+          "title": "Layers",
+          "type": "array"
+        },
+        "media_type": {
+          "const": "image/png",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "rendered_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Rendered Sha256",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "in_progress",
+          "title": "Status",
+          "type": "string"
+        },
+        "width": {
+          "const": 1600,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "execution_mode",
+        "width",
+        "height",
+        "media_type",
+        "rendered_sha256",
+        "artifact_id",
+        "layers",
+        "disclosure",
+        "generated_at"
+      ],
+      "title": "CompositionGenerated",
+      "type": "object"
+    },
+    "CompositionLayer": {
+      "additionalProperties": false,
+      "properties": {
+        "bounds": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Bounds",
+          "type": "array"
+        },
+        "height": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Height",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "background",
+            "product_ui",
+            "logo",
+            "headline",
+            "body",
+            "cta",
+            "disclosure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "rgba_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Rgba Sha256",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Id"
+        },
+        "width": {
+          "maximum": 1600,
+          "minimum": 1,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "rgba_sha256",
+        "bounds",
+        "width",
+        "height"
+      ],
+      "title": "CompositionLayer",
       "type": "object"
     },
     "CreativeBrief": {
@@ -1001,6 +1221,9 @@
     "asset_uploaded": {
       "$ref": "#/$defs/AssetUploaded"
     },
+    "background_request": {
+      "$ref": "#/$defs/BackgroundRequest"
+    },
     "brand_lock": {
       "$ref": "#/$defs/BrandLock"
     },
@@ -1009,6 +1232,9 @@
     },
     "brand_lock_confirmed": {
       "$ref": "#/$defs/BrandLockConfirmed"
+    },
+    "composition_generated": {
+      "$ref": "#/$defs/CompositionGenerated"
     },
     "creative_brief": {
       "$ref": "#/$defs/CreativeBrief"
@@ -1067,6 +1293,8 @@
     "brand_lock_confirmation",
     "brand_lock_confirmed",
     "draft_generated",
+    "background_request",
+    "composition_generated",
     "job_accepted",
     "feedback_request",
     "retry_request",

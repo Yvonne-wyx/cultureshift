@@ -1,4 +1,10 @@
-import type { AdCopy, BrandLock, CulturalHypothesis, RunCreate } from "../generated/contracts";
+import type {
+  AdCopy,
+  BrandLock,
+  CompositionLayer,
+  CulturalHypothesis,
+  RunCreate,
+} from "../generated/contracts";
 import { FIXTURE_DISCLOSURE, type FixtureBundle, type FixtureId } from "./types";
 
 type JsonObject = Record<string, unknown>;
@@ -42,6 +48,20 @@ const APPROVED_SOURCE_BY_FIXTURE = deepFreeze({
     source_asset_path: "/fixtures/orbit-ai/source-en-gb.svg",
   },
 } as const);
+const APPROVED_COMPOSITION_BY_FIXTURE = deepFreeze({
+  "china-to-uk": {
+    preview_path: "/fixtures/orbit-ai/composed-china-to-uk.png",
+    rendered_sha256: "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615",
+    background_provenance: "fixture:day12-background-china_to_uk",
+  },
+  "uk-to-china": {
+    preview_path: "/fixtures/orbit-ai/composed-uk-to-china.png",
+    rendered_sha256: "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c",
+    background_provenance: "fixture:day12-background-uk_to_china",
+  },
+} as const);
+const FONT_SHA256 = "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b";
+const FONT_COMMIT = "f8d157532fbfaeda587e826d4cd5b21a49186f7c";
 
 function invalid(code: string): never {
   throw new Error(`Invalid fixture: ${code}`);
@@ -91,6 +111,106 @@ function publicPath(value: unknown): string {
     invalid("unsafe_asset_path");
   }
   return result;
+}
+
+function publicPngPath(value: unknown): string {
+  const result = text(value, "unsafe_asset_path");
+  if (
+    !result.startsWith("/fixtures/orbit-ai/composed-") ||
+    !result.endsWith(".png") ||
+    result.includes("\\") ||
+    result.includes("..") ||
+    result.includes("?") ||
+    result.includes("#")
+  ) invalid("unsafe_asset_path");
+  return result;
+}
+
+function exactKeys(value: JsonObject, expected: readonly string[], code: string): void {
+  if (!structuralEqual(Object.keys(value).sort(), [...expected].sort())) invalid(code);
+}
+
+function compositionEvidence(
+  value: unknown,
+  fixtureId: FixtureId,
+  lock: BrandLock,
+): FixtureBundle["composition"] {
+  const composition = object(value, "invalid_composition");
+  exactKeys(composition, [
+    "execution_mode", "width", "height", "media_type", "preview_path",
+    "rendered_sha256", "background_provenance", "layers", "font", "disclosure",
+    "limitation",
+  ], "invalid_composition");
+  const approved = APPROVED_COMPOSITION_BY_FIXTURE[fixtureId];
+  if (
+    composition.execution_mode !== "fixture" || composition.width !== 1600 ||
+    composition.height !== 900 || composition.media_type !== "image/png" ||
+    publicPngPath(composition.preview_path) !== approved.preview_path ||
+    text(composition.rendered_sha256, "invalid_composition") !== approved.rendered_sha256 ||
+    publicReference(composition.background_provenance, "invalid_composition") !== approved.background_provenance ||
+    composition.disclosure !== FIXTURE_DISCLOSURE
+  ) invalid("invalid_composition");
+  if (!Array.isArray(composition.layers) || composition.layers.length !== 7) {
+    invalid("invalid_composition");
+  }
+  const expectedKinds = [
+    "background", "product_ui", "logo", "headline", "body", "cta", "disclosure",
+  ] as const;
+  const layers = composition.layers.map((rawLayer, index): CompositionLayer => {
+    const layer = object(rawLayer, "invalid_composition");
+    exactKeys(layer, ["kind", "source_asset_id", "rgba_sha256", "bounds", "width", "height"], "invalid_composition");
+    if (layer.kind !== expectedKinds[index] || !SHA256.test(text(layer.rgba_sha256, "invalid_composition"))) {
+      invalid("invalid_composition");
+    }
+    if (!Array.isArray(layer.bounds) || layer.bounds.length !== 4 || !layer.bounds.every(Number.isInteger)) {
+      invalid("invalid_composition");
+    }
+    const [left, top, right, bottom] = layer.bounds as number[];
+    if (
+      !Number.isInteger(layer.width) || !Number.isInteger(layer.height) ||
+      left < 0 || top < 0 || right > 1600 || bottom > 900 ||
+      right - left !== layer.width || bottom - top !== layer.height
+    ) invalid("invalid_composition");
+    const expectedSource = layer.kind === "logo"
+      ? lock.logo_asset_id
+      : layer.kind === "product_ui" ? lock.product_ui_asset_ids[0] : null;
+    if (layer.source_asset_id !== expectedSource) invalid("invalid_composition");
+    return {
+      kind: layer.kind as CompositionLayer["kind"],
+      source_asset_id: expectedSource,
+      rgba_sha256: layer.rgba_sha256 as string,
+      bounds: layer.bounds as CompositionLayer["bounds"],
+      width: layer.width as number,
+      height: layer.height as number,
+    };
+  });
+  const font = object(composition.font, "invalid_composition");
+  exactKeys(font, ["path", "sha256", "upstream_commit"], "invalid_composition");
+  if (
+    font.path !== "assets/fonts/NotoSansCJKsc-Regular.otf" ||
+    font.sha256 !== FONT_SHA256 || font.upstream_commit !== FONT_COMMIT
+  ) invalid("invalid_composition");
+  const limitation = text(composition.limitation, "invalid_composition");
+  if (!/fixture-only composition; human review required/i.test(limitation)) {
+    invalid("invalid_composition");
+  }
+  return {
+    execution_mode: "fixture",
+    width: 1600,
+    height: 900,
+    media_type: "image/png",
+    preview_path: approved.preview_path,
+    rendered_sha256: approved.rendered_sha256,
+    background_provenance: approved.background_provenance,
+    layers,
+    font: {
+      path: "assets/fonts/NotoSansCJKsc-Regular.otf",
+      sha256: FONT_SHA256,
+      upstream_commit: FONT_COMMIT,
+    },
+    disclosure: FIXTURE_DISCLOSURE,
+    limitation,
+  };
 }
 
 function structuralEqual(left: unknown, right: unknown): boolean {
@@ -209,6 +329,7 @@ export function validateFixture(raw: unknown, expectedId: FixtureId): Readonly<F
   if (request.direction !== approvedSource.direction) invalid("invalid_direction");
   if (!structuralEqual(request.source_asset, approvedSource.source_asset)) invalid("source_asset_mismatch");
   const preview = object(fixture.preview, "invalid_shape");
+  const composition = compositionEvidence(fixture.composition, expectedId, request.brand_lock);
   const sourceAssetPath = publicPath(preview.source_asset_path);
   if (sourceAssetPath !== approvedSource.source_asset_path) invalid("source_asset_mismatch");
   const previewLock = brandLock(preview.brand_lock);
@@ -281,6 +402,7 @@ export function validateFixture(raw: unknown, expectedId: FixtureId): Readonly<F
       rule_ids: draftRules,
       prompt_summary: requiredPrompt,
     },
+    composition,
     preview: {
       source_asset_path: sourceAssetPath,
       logo_asset_path: publicPath(preview.logo_asset_path),

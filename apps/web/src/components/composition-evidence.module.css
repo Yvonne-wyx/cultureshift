@@ -1,0 +1,19 @@
+.section {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #aeb8c4;
+  border-radius: .75rem;
+}
+.statusRow { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.disclosure, .limitation { color: #5d1600; font-weight: 800; }
+.preview { width: 100%; height: auto; border: 1px solid #aeb8c4; border-radius: .5rem; }
+.evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.evidence div { padding: .75rem; background: #f2f6fa; border-radius: .5rem; min-width: 0; }
+.evidence dt { font-weight: 700; }
+.evidence dd { margin: .25rem 0 0; overflow-wrap: anywhere; }
+.evidence ul { margin: 0; padding-left: 1.25rem; }
+@media (max-width: 48rem) {
+  .statusRow { align-items: flex-start; flex-direction: column; }
+  .evidence { grid-template-columns: 1fr; }
+}

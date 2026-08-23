@@ -251,20 +251,59 @@ export type MediaType1 = string;
 export type Sha2561 = string;
 export type DeleteCapabilityToken = string;
 export type SizeBytes = number;
-export type RunId1 = string;
-export type Status1 = "in_progress";
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "LocalizationDirection".
  */
 export type LocalizationDirection = "china_to_uk" | "uk_to_china";
+export type Height = 900;
+export type Narrative = string;
+export type ProhibitedContent = ("logo" | "brand_name" | "product_ui" | "statistics" | "claims" | "long_text")[];
+export type UseScenario = string;
+export type Width = 1600;
+export type RunId1 = string;
+export type Status1 = "in_progress";
+export type ArtifactId = string;
+export type Disclosure = "Fixture Demo / 非实时模型";
+export type FixtureCompositionExecutionMode = "fixture";
+export type Height1 = 900;
+/**
+ * @minItems 6
+ * @maxItems 7
+ */
+export type Layers =
+  | [CompositionLayer, CompositionLayer, CompositionLayer, CompositionLayer, CompositionLayer, CompositionLayer]
+  | [
+      CompositionLayer,
+      CompositionLayer,
+      CompositionLayer,
+      CompositionLayer,
+      CompositionLayer,
+      CompositionLayer,
+      CompositionLayer
+    ];
+/**
+ * @minItems 4
+ * @maxItems 4
+ */
+export type Bounds = [unknown, unknown, unknown, unknown];
+export type Height2 = number;
+export type Kind = "background" | "product_ui" | "logo" | "headline" | "body" | "cta" | "disclosure";
+export type RgbaSha256 = string;
+export type SourceAssetId = string | null;
+export type Width1 = number;
+export type MediaType2 = "image/png";
+export type RenderedSha256 = string;
+export type RunId2 = string;
+export type Status2 = "in_progress";
+export type Width2 = 1600;
 /**
  * @maxItems 32
  */
 export type Hypotheses1 = CulturalHypothesis[];
-export type Narrative = string;
+export type Narrative1 = string;
 export type TrustInformation = string;
-export type UseScenario = string;
+export type UseScenario1 = string;
 export type BrandLockPreserved = boolean;
 export type RequiresHumanReview = boolean;
 /**
@@ -276,11 +315,11 @@ export type Warnings1 = string[];
  * @maxItems 2
  */
 export type RuleIds = [string, string];
-export type RunId2 = string;
-export type Status2 = "in_progress";
+export type RunId3 = string;
+export type Status3 = "in_progress";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type ExportResultVersion = number;
-export type RunId3 = string;
+export type RunId4 = string;
 /**
  * @maxItems 32
  */
@@ -340,8 +379,8 @@ export type RequestedChanges =
       string,
       string
     ];
-export type RunId4 = string;
 export type RunId5 = string;
+export type RunId6 = string;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "RunStatus".
@@ -355,16 +394,16 @@ export type Version = number;
  * @maxItems 64
  */
 export type ResultVersions = ResultVersion[];
-export type RunId6 = string;
+export type RunId7 = string;
 /**
  * @maxItems 32
  */
 export type WarningCodes = string[];
 export type ReasonCategory = "validation" | "generation" | "review";
-export type RunId7 = string;
-export type CapabilityToken = string;
 export type RunId8 = string;
+export type CapabilityToken = string;
 export type RunId9 = string;
+export type RunId10 = string;
 /**
  * @maxItems 32
  */
@@ -381,9 +420,11 @@ export interface ContractRegistry {
   analysis_completed: AnalysisCompleted;
   asset_ref: AssetRef;
   asset_uploaded: AssetUploaded;
+  background_request: BackgroundRequest;
   brand_lock: BrandLock;
   brand_lock_confirmation: BrandLockConfirmation;
   brand_lock_confirmed: BrandLockConfirmed;
+  composition_generated: CompositionGenerated;
   creative_brief: CreativeBrief;
   critique_report: CritiqueReport;
   cultural_hypothesis: CulturalHypothesis;
@@ -497,6 +538,19 @@ export interface AssetUploaded {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "BackgroundRequest".
+ */
+export interface BackgroundRequest {
+  direction: LocalizationDirection;
+  height?: Height;
+  narrative: Narrative;
+  prohibited_content?: ProhibitedContent;
+  target_locale: Locale;
+  use_scenario: UseScenario;
+  width?: Width;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "BrandLockConfirmation".
  */
 export interface BrandLockConfirmation {
@@ -514,16 +568,45 @@ export interface BrandLockConfirmed {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CompositionGenerated".
+ */
+export interface CompositionGenerated {
+  artifact_id: ArtifactId;
+  disclosure: Disclosure;
+  execution_mode: FixtureCompositionExecutionMode;
+  generated_at: UtcDatetime;
+  height: Height1;
+  layers: Layers;
+  media_type: MediaType2;
+  rendered_sha256: RenderedSha256;
+  run_id: RunId2;
+  status: Status2;
+  width: Width2;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CompositionLayer".
+ */
+export interface CompositionLayer {
+  bounds: Bounds;
+  height: Height2;
+  kind: Kind;
+  rgba_sha256: RgbaSha256;
+  source_asset_id?: SourceAssetId;
+  width: Width1;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "CreativeBrief".
  */
 export interface CreativeBrief {
   brand_lock: BrandLock;
   direction: LocalizationDirection;
   hypotheses?: Hypotheses1;
-  narrative: Narrative;
+  narrative: Narrative1;
   target_locale: Locale;
   trust_information: TrustInformation;
-  use_scenario: UseScenario;
+  use_scenario: UseScenario1;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -543,8 +626,8 @@ export interface DraftGenerated {
   copy: AdCopy;
   generated_at: UtcDatetime;
   rule_ids: RuleIds;
-  run_id: RunId2;
-  status: Status2;
+  run_id: RunId3;
+  status: Status3;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -554,7 +637,7 @@ export interface ExportSummary {
   approval_status: ApprovalStatus;
   exported_at: UtcDatetime;
   result_version: ExportResultVersion;
-  run_id: RunId3;
+  run_id: RunId4;
   warnings?: Warnings2;
 }
 /**
@@ -564,7 +647,7 @@ export interface ExportSummary {
 export interface FeedbackRequest {
   feedback: Feedback;
   requested_changes: RequestedChanges;
-  run_id: RunId4;
+  run_id: RunId5;
   submitted_at: UtcDatetime;
 }
 /**
@@ -573,7 +656,7 @@ export interface FeedbackRequest {
  */
 export interface JobAccepted {
   accepted_at: UtcDatetime;
-  run_id: RunId5;
+  run_id: RunId6;
   status: RunStatus;
 }
 /**
@@ -584,7 +667,7 @@ export interface ProjectRunContract {
   created_at: UtcDatetime;
   request: RunCreate;
   result_versions?: ResultVersions;
-  run_id: RunId6;
+  run_id: RunId7;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes;
@@ -620,7 +703,7 @@ export interface ResultVersion {
  */
 export interface RetryRequest {
   reason_category: ReasonCategory;
-  run_id: RunId7;
+  run_id: RunId8;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -629,7 +712,7 @@ export interface RetryRequest {
 export interface RunCreated {
   capability_token: CapabilityToken;
   created_at: UtcDatetime;
-  run_id: RunId8;
+  run_id: RunId9;
   status: RunStatus;
 }
 /**
@@ -639,7 +722,7 @@ export interface RunCreated {
 export interface RunSnapshot {
   created_at: UtcDatetime;
   direction: LocalizationDirection;
-  run_id: RunId9;
+  run_id: RunId10;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes1;

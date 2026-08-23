@@ -10,7 +10,14 @@ from pathlib import Path
 from uuid import UUID
 
 from cultureshift.brand_lock_confirmation import validate_brand_lock_confirmation
-from cultureshift.contracts import AdAnalysis, AdCopy, BrandLock, CreativeBrief, RunCreate
+from cultureshift.contracts import (
+    AdAnalysis,
+    AdCopy,
+    BrandLock,
+    CompositionGenerated,
+    CreativeBrief,
+    RunCreate,
+)
 from cultureshift.domain import ProjectRun, ProjectRunStatus, utc_now
 
 
@@ -31,6 +38,10 @@ class InvalidRunStateError(ValueError):
 
 
 class DraftImmutableError(ValueError):
+    pass
+
+
+class CompositionImmutableError(ValueError):
     pass
 
 
@@ -94,7 +105,8 @@ class SQLiteProjectRunRepository:
                     creative_brief_json TEXT,
                     ad_copy_json TEXT,
                     draft_rule_ids_json TEXT,
-                    draft_generated_at TEXT
+                    draft_generated_at TEXT,
+                    composition_json TEXT
                 )
                 """
             )
@@ -128,6 +140,10 @@ class SQLiteProjectRunRepository:
                     connection.execute(
                         f"ALTER TABLE project_run_contexts ADD COLUMN {name} {sql_type}"
                     )
+            if "composition_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE project_run_contexts ADD COLUMN composition_json TEXT"
+                )
 
     def create(self, run: ProjectRun, *, request: RunCreate | None = None) -> ProjectRun:
         try:
@@ -228,6 +244,17 @@ class SQLiteProjectRunRepository:
         if row is None:
             raise ProjectRunNotFoundError(str(run_id))
         return self._draft_record(row)
+
+    def get_composition(self, run_id: UUID | str) -> CompositionGenerated | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT composition_json FROM project_run_contexts WHERE run_id = ?",
+                (str(run_id),),
+            ).fetchone()
+        if row is None:
+            raise ProjectRunNotFoundError(str(run_id))
+        encoded = row["composition_json"]
+        return None if encoded is None else CompositionGenerated.model_validate_json(encoded)
 
     @staticmethod
     def _confirmation_record(row: sqlite3.Row) -> BrandLockConfirmationRecord | None:
@@ -338,6 +365,61 @@ class SQLiteProjectRunRepository:
             if cursor.rowcount != 1:
                 raise DraftImmutableError("draft is immutable")
         return DraftRecord(brief, ad_copy, rule_ids, generation_time)
+
+    def save_composition(
+        self,
+        run_id: UUID | str,
+        composition: CompositionGenerated,
+    ) -> CompositionGenerated:
+        if str(composition.run_id) != str(run_id):
+            raise InvalidRunStateError("composition run mismatch")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT r.status, c.confirmed_brand_lock_json, c.draft_generated_at,
+                       c.composition_json
+                FROM project_runs AS r
+                LEFT JOIN project_run_contexts AS c ON c.run_id = r.id
+                WHERE r.id = ?
+                """,
+                (str(run_id),),
+            ).fetchone()
+            if row is None:
+                raise ProjectRunNotFoundError(str(run_id))
+            if row["composition_json"] is not None:
+                existing = CompositionGenerated.model_validate_json(row["composition_json"])
+                if existing == composition:
+                    return existing
+                raise CompositionImmutableError("composition is immutable")
+            if (
+                row["status"] != ProjectRunStatus.IN_PROGRESS.value
+                or row["confirmed_brand_lock_json"] is None
+                or row["draft_generated_at"] is None
+            ):
+                raise InvalidRunStateError("confirmed drafted run required")
+            confirmed = BrandLock.model_validate_json(row["confirmed_brand_lock_json"])
+            layer_sources = {
+                layer.kind: layer.source_asset_id
+                for layer in composition.layers
+                if layer.source_asset_id is not None
+            }
+            if (
+                layer_sources.get("logo") != confirmed.logo_asset_id
+                or layer_sources.get("product_ui") not in confirmed.product_ui_asset_ids
+            ):
+                raise InvalidRunStateError("composition Brand Lock mismatch")
+            cursor = connection.execute(
+                """
+                UPDATE project_run_contexts
+                SET composition_json = ?
+                WHERE run_id = ? AND composition_json IS NULL
+                """,
+                (composition.model_dump_json(), str(run_id)),
+            )
+            if cursor.rowcount != 1:
+                raise CompositionImmutableError("composition is immutable")
+        return composition
 
     def get(self, run_id: UUID | str) -> ProjectRun:
         with self._connect() as connection:

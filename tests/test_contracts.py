@@ -12,6 +12,8 @@ from cultureshift.contracts import (
     BrandLock,
     BrandLockConfirmation,
     BrandLockConfirmed,
+    CompositionGenerated,
+    CompositionLayer,
     ContractRegistry,
     CulturalHypothesis,
     DraftGenerated,
@@ -105,6 +107,121 @@ def test_brand_lock_confirmation_contracts_are_closed(
         )
     with pytest.raises(ValidationError):
         BrandLockConfirmed.model_validate({**response.model_dump(), "status": "completed"})
+
+
+def _day12_layers() -> tuple[CompositionLayer, ...]:
+    return (
+        CompositionLayer(
+            kind="background",
+            rgba_sha256="1" * 64,
+            bounds=(0, 0, 1600, 900),
+            width=1600,
+            height=900,
+        ),
+        CompositionLayer(
+            kind="product_ui",
+            source_asset_id="a2222222-2222-4222-8222-222222222222",
+            rgba_sha256="2" * 64,
+            bounds=(850, 150, 1480, 720),
+            width=630,
+            height=570,
+        ),
+        CompositionLayer(
+            kind="logo",
+            source_asset_id="a1111111-1111-4111-8111-111111111111",
+            rgba_sha256="3" * 64,
+            bounds=(100, 70, 320, 166),
+            width=220,
+            height=96,
+        ),
+        CompositionLayer(
+            kind="headline",
+            rgba_sha256="4" * 64,
+            bounds=(100, 240, 760, 360),
+            width=660,
+            height=120,
+        ),
+        CompositionLayer(
+            kind="body",
+            rgba_sha256="5" * 64,
+            bounds=(100, 400, 760, 510),
+            width=660,
+            height=110,
+        ),
+        CompositionLayer(
+            kind="cta",
+            rgba_sha256="6" * 64,
+            bounds=(100, 600, 420, 680),
+            width=320,
+            height=80,
+        ),
+        CompositionLayer(
+            kind="disclosure",
+            rgba_sha256="7" * 64,
+            bounds=(100, 820, 520, 860),
+            width=420,
+            height=40,
+        ),
+    )
+
+
+def _day12_composition(**changes: object) -> CompositionGenerated:
+    payload: dict[str, object] = {
+        "run_id": uuid4(),
+        "status": "in_progress",
+        "execution_mode": "fixture",
+        "width": 1600,
+        "height": 900,
+        "media_type": "image/png",
+        "rendered_sha256": "a" * 64,
+        "artifact_id": uuid4(),
+        "layers": _day12_layers(),
+        "disclosure": "Fixture Demo / 非实时模型",
+        "generated_at": datetime(2026, 8, 23, tzinfo=UTC),
+    }
+    payload.update(changes)
+    return CompositionGenerated.model_validate(payload)
+
+
+def test_composition_generated_requires_fixed_fixture_dimensions() -> None:
+    with pytest.raises(ValidationError):
+        _day12_composition(width=1599)
+
+
+def test_composition_generated_rejects_duplicate_or_unordered_layers() -> None:
+    layers = _day12_layers()
+    with pytest.raises(ValidationError):
+        _day12_composition(layers=(*layers, layers[0]))
+    with pytest.raises(ValidationError):
+        _day12_composition(layers=(layers[0], layers[2], layers[1], *layers[3:]))
+
+
+def test_composition_layers_require_protected_sources_and_canvas_bounds() -> None:
+    with pytest.raises(ValidationError):
+        CompositionLayer(
+            kind="logo",
+            rgba_sha256="a" * 64,
+            bounds=(100, 70, 320, 166),
+            width=220,
+            height=96,
+        )
+    with pytest.raises(ValidationError):
+        CompositionLayer(
+            kind="headline",
+            rgba_sha256="a" * 64,
+            bounds=(1500, 100, 1700, 200),
+            width=200,
+            height=100,
+        )
+
+
+def test_composition_contract_is_closed_and_has_exact_fixture_disclosure() -> None:
+    composition = _day12_composition()
+    assert CompositionGenerated.model_validate_json(composition.model_dump_json()) == composition
+    with pytest.raises(ValidationError):
+        _day12_composition(disclosure="Fixture preview")
+    with pytest.raises(ValidationError):
+        CompositionGenerated.model_validate({**composition.model_dump(), "local_path": "private"})
 
 
 def _valid_draft_payload(valid_run_payload: dict[str, object]) -> dict[str, object]:

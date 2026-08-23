@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -88,6 +89,36 @@ describe("fixture loader", () => {
         source_asset_path: "/fixtures/orbit-ai/source-en-gb.svg",
       },
     });
+  });
+
+  it.each([
+    ["china-to-uk", "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615", "../../public/fixtures/orbit-ai/composed-china-to-uk.png"],
+    ["uk-to-china", "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c", "../../public/fixtures/orbit-ai/composed-uk-to-china.png"],
+  ] as const)("loads exact Day 12 composition evidence for %s", (fixtureId, sha256, previewPath) => {
+    const fixture = loadFixture(fixtureId);
+    expect(fixture.composition).toMatchObject({
+      execution_mode: "fixture",
+      width: 1600,
+      height: 900,
+      media_type: "image/png",
+      rendered_sha256: sha256,
+      disclosure: "Fixture Demo / 非实时模型",
+      font: {
+        path: "assets/fonts/NotoSansCJKsc-Regular.otf",
+        upstream_commit: "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+      },
+    });
+    expect(fixture.composition.layers.map((layer) => layer.kind)).toEqual([
+      "background", "product_ui", "logo", "headline", "body", "cta", "disclosure",
+    ]);
+    expect(fixture.composition.layers[1].source_asset_id).toBe(
+      fixture.request.brand_lock.product_ui_asset_ids[0],
+    );
+    expect(fixture.composition.layers[2].source_asset_id).toBe(
+      fixture.request.brand_lock.logo_asset_id,
+    );
+    const preview = readFileSync(fileURLToPath(new URL(previewPath, import.meta.url)));
+    expect(createHash("sha256").update(preview).digest("hex")).toBe(sha256);
   });
 
   it("loads exact bilateral Day 11 draft evidence", () => {

@@ -2,14 +2,22 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
+from uuid import uuid4
 
 import pytest
 
-from cultureshift.contracts import AdAnalysis, BrandLock, RunCreate
+from cultureshift.contracts import (
+    AdAnalysis,
+    BrandLock,
+    CompositionGenerated,
+    CompositionLayer,
+    RunCreate,
+)
 from cultureshift.domain import LocalizationDirection, ProjectRun, ProjectRunStatus
 from cultureshift.draft_generation import DraftGenerator, FixtureCopywriter
 from cultureshift.repository import (
     BrandLockImmutableError,
+    CompositionImmutableError,
     DraftImmutableError,
     InvalidRunStateError,
     ProjectRunNotFoundError,
@@ -271,6 +279,96 @@ def test_initialize_migrates_context_for_day11_draft(tmp_path) -> None:
         "draft_rule_ids_json",
         "draft_generated_at",
     } <= columns
+
+
+def test_initialize_migrates_context_for_day12_composition(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE project_run_contexts (
+                run_id TEXT PRIMARY KEY,
+                request_json TEXT NOT NULL,
+                analysis_json TEXT,
+                repair_attempted INTEGER NOT NULL DEFAULT 0,
+                confirmed_brand_lock_json TEXT,
+                brand_lock_confirmed_at TEXT,
+                creative_brief_json TEXT,
+                ad_copy_json TEXT,
+                draft_rule_ids_json TEXT,
+                draft_generated_at TEXT
+            )
+            """
+        )
+
+    SQLiteProjectRunRepository(database).initialize()
+
+    with sqlite3.connect(database) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(project_run_contexts)")
+        }
+    assert "composition_json" in columns
+
+
+def _composition_summary(run_id, brand_lock: BrandLock) -> CompositionGenerated:
+    specs = (
+        ("background", None, (0, 0, 1600, 900), "1"),
+        ("product_ui", str(brand_lock.product_ui_asset_ids[0]), (850, 170, 1500, 690), "2"),
+        ("logo", str(brand_lock.logo_asset_id), (100, 70, 320, 166), "3"),
+        ("headline", None, (100, 220, 760, 344), "4"),
+        ("body", None, (100, 390, 780, 476), "5"),
+        ("cta", None, (100, 560, 430, 636), "6"),
+        ("disclosure", None, (100, 820, 530, 864), "7"),
+    )
+    layers = tuple(
+        CompositionLayer(
+            kind=kind,
+            source_asset_id=source,
+            rgba_sha256=digit * 64,
+            bounds=bounds,
+            width=bounds[2] - bounds[0],
+            height=bounds[3] - bounds[1],
+        )
+        for kind, source, bounds, digit in specs
+    )
+    return CompositionGenerated(
+        run_id=run_id,
+        status="in_progress",
+        execution_mode="fixture",
+        width=1600,
+        height=900,
+        media_type="image/png",
+        rendered_sha256="a" * 64,
+        artifact_id=uuid4(),
+        layers=layers,
+        disclosure="Fixture Demo / 非实时模型",
+        generated_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
+    )
+
+
+def test_repository_saves_and_replays_one_immutable_composition(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    draft = DraftGenerator(FixtureCopywriter()).generate(
+        analysis, analyzed, direction=run.direction
+    )
+    repository.save_draft(run.id, draft.brief, draft.ad_copy, draft.rule_ids)
+    summary = _composition_summary(run.id, analyzed)
+
+    first = repository.save_composition(run.id, summary)
+    retry = repository.save_composition(run.id, summary)
+    assert retry == first
+    assert repository.get_composition(run.id) == first
+
+    changed = summary.model_copy(update={"artifact_id": uuid4()})
+    with pytest.raises(CompositionImmutableError):
+        repository.save_composition(run.id, changed)
 
 
 def test_repository_saves_and_replays_one_immutable_draft(

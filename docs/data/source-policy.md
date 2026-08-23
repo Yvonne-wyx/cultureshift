@@ -20,3 +20,19 @@ Uploaded and retrieved material is untrusted data, never instructions. Its conte
 Evidence and provenance references must travel with derived Brand Lock fields, `CulturalHypothesis` records, and creative outputs. References should permit an authorized reviewer to reconstruct the basis without exposing private content publicly. CultureShift-controlled temporary assets are intended to expire within 24 hours; any future processor with different retention, logging, training, or deletion behavior requires separate review and disclosure.
 
 No provider-specific ingestion, retrieval, storage, or generation pipeline is selected by this policy.
+
+## Day 12 font source record
+
+The deterministic compositor uses the unchanged
+`Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf` file from the official
+`notofonts/noto-cjk` repository at commit
+`f8d157532fbfaeda587e826d4cd5b21a49186f7c`. It was retrieved on 2026-08-23,
+is licensed under SIL Open Font License 1.1, and has SHA-256
+`2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b`.
+The bundled licence is `assets/fonts/OFL-1.1.txt`. The public source and licence record permits
+bundling and redistribution subject to the OFL conditions; CultureShift does not modify or sell
+the font by itself.
+
+The font is an implementation dependency, not cultural evidence. A missing file, hash mismatch,
+licence mismatch, or load failure blocks composition. Machine-dependent fallback fonts are not
+permitted.

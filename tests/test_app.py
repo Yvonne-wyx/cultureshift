@@ -9,6 +9,7 @@ from cultureshift.analysis_provider import FakeProvider, VisionProvider, VisionP
 from cultureshift.app import create_app
 from cultureshift.asset_storage import TemporaryAssetStore
 from cultureshift.capability_tokens import Capability, CapabilityTokenService
+from cultureshift.composition_service import CompositionService
 from cultureshift.draft_generation import (
     DraftErrorCode,
     DraftGenerationError,
@@ -25,6 +26,7 @@ def make_client(
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
     analysis_provider: VisionProvider | None = None,
     draft_generator: DraftGenerator | None = None,
+    composition_service: CompositionService | None = None,
 ) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
@@ -37,6 +39,7 @@ def make_client(
                 upload_rate_limiter=upload_rate_limiter,
                 analysis_provider=analysis_provider,
                 draft_generator=draft_generator,
+                composition_service=composition_service,
             )
         ),
         repository,
@@ -188,6 +191,73 @@ def create_confirmed_run(client: TestClient, valid_run_payload) -> tuple[str, st
     )
     assert confirmed.status_code == 200
     return run_id, token
+
+
+def create_drafted_fixture_run(client: TestClient, valid_run_payload) -> tuple[str, str]:
+    payload = {
+        **valid_run_payload,
+        "brand_lock": {
+            **valid_run_payload["brand_lock"],
+            "logo_asset_id": "a1111111-1111-4111-8111-111111111111",
+            "product_ui_asset_ids": ["a2222222-2222-4222-8222-222222222222"],
+            "layout_template_asset_id": "a3333333-3333-4333-8333-333333333333",
+        },
+    }
+    run_id, token = create_confirmed_run(client, payload)
+    drafted = client.post(
+        f"/api/v1/runs/{run_id}/draft",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert drafted.status_code == 200
+    return run_id, token
+
+
+def test_composition_endpoint_is_bodyless_authenticated_and_idempotent(
+    tmp_path, valid_run_payload
+) -> None:
+    client, repository = make_client(tmp_path)
+    with client:
+        run_id, token = create_drafted_fixture_run(client, valid_run_payload)
+        first = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        second = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        body_rejected = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            json={"private_prompt": "do not echo"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["status"] == "in_progress"
+    assert first.json()["width"] == 1600 and first.json()["height"] == 900
+    assert "path" not in first.text.casefold()
+    assert repository.get_composition(run_id) is not None
+    assert body_rejected.status_code == 422
+    assert "do not echo" not in body_rejected.text
+
+
+def test_composition_endpoint_requires_capability_and_day11_draft(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_confirmed_run(client, valid_run_payload)
+        missing = client.post(f"/api/v1/runs/{run_id}/composition")
+        no_draft = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert missing.status_code == 401
+    assert missing.json() == {"detail": {"code": "invalid_capability"}}
+    assert no_draft.status_code == 409
+    assert no_draft.json() == {"detail": {"code": "draft_unavailable"}}
 
 
 @pytest.mark.parametrize(

@@ -38,11 +38,19 @@ from cultureshift.capability_tokens import (
     CapabilityTokenError,
     CapabilityTokenService,
 )
+from cultureshift.composition import PillowCompositor
+from cultureshift.composition_service import (
+    CompositionService,
+    CompositionServiceError,
+    CompositionServiceErrorCode,
+)
+from cultureshift.composition_storage import CompositionArtifactStore
 from cultureshift.contracts import (
     AnalysisCompleted,
     AssetUploaded,
     BrandLockConfirmation,
     BrandLockConfirmed,
+    CompositionGenerated,
     DraftGenerated,
     RunCreate,
     RunCreated,
@@ -56,6 +64,8 @@ from cultureshift.draft_generation import (
     DraftGenerator,
     FixtureCopywriter,
 )
+from cultureshift.fixture_assets import FixtureAssetRegistry
+from cultureshift.image_provider import FixtureImageProvider
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import (
     BrandLockImmutableError,
@@ -91,6 +101,7 @@ def create_app(
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
     analysis_provider: VisionProvider | None = None,
     draft_generator: DraftGenerator | None = None,
+    composition_service: CompositionService | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -100,6 +111,15 @@ def create_app(
     )
     provider = analysis_provider or FixtureProvider()
     drafts = draft_generator or DraftGenerator(FixtureCopywriter())
+    temporary_root = Path(os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", ".cultureshift/assets"))
+    compositions = composition_service or CompositionService(
+        runs,
+        FixtureImageProvider(),
+        FixtureAssetRegistry(),
+        PillowCompositor(),
+        CompositionArtifactStore(temporary_root / "compositions"),
+        Path(__file__).resolve().parents[2] / "assets" / "fonts" / "NotoSansCJKsc-Regular.otf",
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -605,6 +625,52 @@ def create_app(
             rule_ids=record.rule_ids,
             generated_at=record.generated_at,
         )
+
+    @application.post(
+        "/api/v1/runs/{run_id}/composition",
+        response_model=CompositionGenerated,
+        tags=["runs"],
+    )
+    async def generate_composition(run_id: UUID, request: Request) -> CompositionGenerated:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.UPDATE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        if await request.body():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": "composition_body_not_allowed"},
+            )
+        try:
+            return compositions.generate(run_id)
+        except CompositionServiceError as error:
+            if error.code is CompositionServiceErrorCode.RUN_NOT_FOUND:
+                status_code = status.HTTP_404_NOT_FOUND
+            elif error.code is CompositionServiceErrorCode.OUTPUT_INVALID:
+                status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+            elif error.code is CompositionServiceErrorCode.PERSISTENCE_FAILED:
+                status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            else:
+                status_code = status.HTTP_409_CONFLICT
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": error.code.value},
+            ) from None
 
     return application
 

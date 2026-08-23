@@ -324,6 +324,98 @@ class DraftGenerated(ContractModel):
         return self
 
 
+class BackgroundRequest(ContractModel):
+    direction: LocalizationDirection
+    target_locale: Locale
+    narrative: LongText
+    use_scenario: LongText
+    width: Literal[1600] = 1600
+    height: Literal[900] = 900
+    prohibited_content: tuple[
+        Literal["logo", "brand_name", "product_ui", "statistics", "claims", "long_text"],
+        ...,
+    ] = ("logo", "brand_name", "product_ui", "statistics", "claims", "long_text")
+
+    @model_validator(mode="after")
+    def require_directional_locale_and_guardrails(self) -> Self:
+        expected_locale = {
+            LocalizationDirection.CHINA_TO_UK: Locale.EN_GB,
+            LocalizationDirection.UK_TO_CHINA: Locale.ZH_CN,
+        }[self.direction]
+        if self.target_locale is not expected_locale:
+            raise ValueError("background locale must match direction")
+        required = ("logo", "brand_name", "product_ui", "statistics", "claims", "long_text")
+        if self.prohibited_content != required:
+            raise ValueError("background guardrails are fixed")
+        return self
+
+
+CompositionLayerKind = Literal[
+    "background", "product_ui", "logo", "headline", "body", "cta", "disclosure"
+]
+
+
+class CompositionLayer(ContractModel):
+    kind: CompositionLayerKind
+    source_asset_id: UUID | None = None
+    rgba_sha256: Sha256
+    bounds: tuple[int, int, int, int]
+    width: int = Field(ge=1, le=1600)
+    height: int = Field(ge=1, le=900)
+
+    @model_validator(mode="after")
+    def require_valid_source_and_bounds(self) -> Self:
+        if (self.kind in {"logo", "product_ui"}) != (self.source_asset_id is not None):
+            raise ValueError("only protected visual layers require source asset IDs")
+        left, top, right, bottom = self.bounds
+        if (
+            left < 0
+            or top < 0
+            or right > 1600
+            or bottom > 900
+            or right <= left
+            or bottom <= top
+            or right - left != self.width
+            or bottom - top != self.height
+        ):
+            raise ValueError("composition layer bounds must match the fixed canvas")
+        return self
+
+
+class CompositionGenerated(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.IN_PROGRESS]
+    execution_mode: Annotated[
+        Literal[ExecutionMode.FIXTURE],
+        Field(title="FixtureCompositionExecutionMode"),
+    ]
+    width: Literal[1600]
+    height: Literal[900]
+    media_type: Literal["image/png"]
+    rendered_sha256: Sha256
+    artifact_id: UUID
+    layers: tuple[CompositionLayer, ...] = Field(min_length=6, max_length=7)
+    disclosure: Literal["Fixture Demo / 非实时模型"]
+    generated_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def require_fixed_layer_order(self) -> Self:
+        kinds = tuple(layer.kind for layer in self.layers)
+        expected = (
+            "background",
+            "product_ui",
+            "logo",
+            "headline",
+            "body",
+            "cta",
+            "disclosure",
+        )
+        without_ui = ("background", "logo", "headline", "body", "cta", "disclosure")
+        if kinds not in {expected, without_ui}:
+            raise ValueError("composition layers must use fixed semantic order")
+        return self
+
+
 class JobAccepted(ContractModel):
     run_id: UUID
     status: RunStatus
@@ -391,6 +483,8 @@ class ContractRegistry(ContractModel):
     brand_lock_confirmation: BrandLockConfirmation
     brand_lock_confirmed: BrandLockConfirmed
     draft_generated: DraftGenerated
+    background_request: BackgroundRequest
+    composition_generated: CompositionGenerated
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
     retry_request: RetryRequest

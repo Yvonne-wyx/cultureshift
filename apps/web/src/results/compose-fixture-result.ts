@@ -33,6 +33,7 @@ export interface FixtureResult {
   warnings: string[];
   limitation: string;
   draft: FixtureBundle["draft"];
+  composition: FixtureBundle["composition"];
   walkthrough: { title: string; description: string }[];
 }
 
@@ -62,6 +63,7 @@ export function composeFixtureResult(
     warnings: [...preview.warnings],
     limitation: preview.limitation,
     draft: structuredClone(fixture.draft),
+    composition: structuredClone(fixture.composition),
     walkthrough: [
       { title: "1. Review source", description: "Confirm the supplied creative and direction." },
       { title: "2. Inspect proposal", description: "Compare the fixture-only localized composition." },

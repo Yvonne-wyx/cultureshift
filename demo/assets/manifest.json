@@ -76,6 +76,82 @@
       "attribution_text": null,
       "evidence_reference": "demo/assets/RIGHTS.md",
       "notes": "Synthetic fixture asset; it makes no cultural or performance claim."
+    },
+    {
+      "id": "orbit-ai-logo-day12-raster",
+      "asset_type": "logo_raster_derivative",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/orbit-ai-logo.png",
+      "sha256": "1280aff7bff5115f369dc06cac39eb4481a4a56eae48806bcff0cc1de47ba999",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Deterministic project-created raster companion to the fictional Orbit AI logo fixture."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Generated locally by scripts/build_day12_fixture_assets.py; no external brand is represented."
+    },
+    {
+      "id": "orbit-ai-product-ui-day12-raster",
+      "asset_type": "product_ui_raster_derivative",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/orbit-ai-product-ui.png",
+      "sha256": "15181d3f19307eeed521c9385fb10280c4e25df849125c039035d8a125a51297",
+      "provenance": {
+        "source_class": "synthetic_example",
+        "description": "Deterministic project-created raster companion to the fictional Orbit AI UI fixture."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Generated locally by scripts/build_day12_fixture_assets.py; it depicts no real product UI."
+    },
+    {
+      "id": "orbit-ai-composed-china-to-uk-day12",
+      "asset_type": "fixture_composition",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/composed-china-to-uk.png",
+      "sha256": "ff0ae61cea22469934cdd086e9bc63012438d111d8ae2a0aea9b410a7bbee615",
+      "provenance": {
+        "source_class": "generated_content",
+        "description": "Deterministic China-to-UK Day 12 composition built from registered project fixtures."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Fixture-only output; not evidence of cultural, legal, brand, or performance validation."
+    },
+    {
+      "id": "orbit-ai-composed-uk-to-china-day12",
+      "asset_type": "fixture_composition",
+      "asset_path": "apps/web/public/fixtures/orbit-ai/composed-uk-to-china.png",
+      "sha256": "f5a1463c236e628078b40cc2642a1f300ac70e15ed118ca69e11b1e2cfcbff4c",
+      "provenance": {
+        "source_class": "generated_content",
+        "description": "Deterministic UK-to-China Day 12 composition built from registered project fixtures."
+      },
+      "creator_owner_status": "project_created",
+      "rights_status": "cleared",
+      "permitted_project_use": ["repository_test", "public_demo"],
+      "derivative_work_permission": "permitted",
+      "public_display_permission": "permitted",
+      "attribution_required": false,
+      "attribution_text": null,
+      "evidence_reference": "demo/assets/RIGHTS.md",
+      "notes": "Fixture-only output; not evidence of cultural, legal, brand, or performance validation."
     }
   ]
 }

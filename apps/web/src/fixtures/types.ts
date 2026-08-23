@@ -1,6 +1,7 @@
 import type {
   AdCopy,
   BrandLock,
+  CompositionLayer,
   CreativeBrief,
   CulturalHypothesis,
   RunCreate,
@@ -9,6 +10,24 @@ import type {
 export const FIXTURE_DISCLOSURE = "Fixture Demo / 非实时模型" as const;
 
 export type FixtureId = "china-to-uk" | "uk-to-china";
+
+export interface FixtureComposition {
+  execution_mode: "fixture";
+  width: 1600;
+  height: 900;
+  media_type: "image/png";
+  preview_path: string;
+  rendered_sha256: string;
+  background_provenance: string;
+  layers: CompositionLayer[];
+  font: {
+    path: "assets/fonts/NotoSansCJKsc-Regular.otf";
+    sha256: string;
+    upstream_commit: string;
+  };
+  disclosure: typeof FIXTURE_DISCLOSURE;
+  limitation: string;
+}
 
 export interface FixtureBundle {
   fixture_id: FixtureId;
@@ -22,6 +41,7 @@ export interface FixtureBundle {
     rule_ids: string[];
     prompt_summary: string;
   };
+  composition: FixtureComposition;
   preview: {
     source_asset_path: string;
     logo_asset_path: string;

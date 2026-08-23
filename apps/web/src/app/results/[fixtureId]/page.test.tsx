@@ -16,7 +16,7 @@ describe("fixture result page", () => {
     async (fixtureId) => {
       render(await ResultPage({ params: Promise.resolve({ fixtureId }) }));
 
-      expect(screen.getAllByText("Fixture Demo / 非实时模型")).toHaveLength(2);
+      expect(screen.getAllByText("Fixture Demo / 非实时模型")).toHaveLength(3);
       expect(screen.getByRole("heading", { name: "Localized fixture result" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Brand Lock" })).toBeInTheDocument();
       expect(
@@ -32,6 +32,12 @@ describe("fixture result page", () => {
         screen.getByRole("heading", { name: "Creative brief / 创意简报" }),
       ).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Factual copy / 事实文案" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Deterministic composition / 确定性合成" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: "1600 x 900 fixture composition" }),
+      ).toBeInTheDocument();
       expect(screen.getByText("1. Review source")).toBeInTheDocument();
       expect(screen.getByText("2. Inspect proposal")).toBeInTheDocument();
       expect(screen.getByText("3. Verify traceability")).toBeInTheDocument();

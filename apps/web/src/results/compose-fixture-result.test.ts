@@ -20,6 +20,8 @@ describe("composeFixtureResult", () => {
       expect(Object.isFrozen(first.brand_lock)).toBe(true);
       expect(Object.isFrozen(first.hypotheses)).toBe(true);
       expect(Object.isFrozen(first.draft)).toBe(true);
+      expect(Object.isFrozen(first.composition)).toBe(true);
+      expect(first.composition).toEqual(fixture.composition);
       expect(Object.isFrozen(first.draft.brief.brand_lock)).toBe(true);
       expect(first.draft.rule_ids).toEqual(first.rule_ids);
       expect(first.watermark).toBe("Fixture Demo / 非实时模型");
