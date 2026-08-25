@@ -18,10 +18,13 @@ from cultureshift.contracts import (
     CulturalHypothesis,
     DraftGenerated,
     ExecutionMode,
+    FeedbackRequest,
     Locale,
     Market,
     ProjectRunContract,
     ResultVersion,
+    RevisionChange,
+    RevisionCompleted,
     RunCreate,
     RunSnapshot,
     RunStatus,
@@ -72,6 +75,61 @@ def test_contract_enums_have_stable_public_values() -> None:
     assert RunStatus.READY.value == "ready"
     assert RunStatus.FAILED_RETRYABLE.value == "failed_retryable"
     assert RunStatus.FAILED_FINAL.value == "failed_final"
+    assert [item.value for item in RevisionChange] == [
+        "shorten_headline",
+        "shorten_body",
+    ]
+
+
+def test_feedback_requires_one_or_two_unique_supported_changes() -> None:
+    common = {
+        "run_id": uuid4(),
+        "feedback": "Please shorten the approved copy.",
+        "submitted_at": datetime(2026, 8, 25, tzinfo=UTC),
+    }
+    request = FeedbackRequest(**common, requested_changes=["shorten_headline"])
+    assert request.requested_changes == (RevisionChange.SHORTEN_HEADLINE,)
+    for changes in ([], ["shorten_body", "shorten_body"], ["change_cta"]):
+        with pytest.raises(ValidationError):
+            FeedbackRequest(**common, requested_changes=changes)
+
+
+def test_revision_completed_is_exactly_version_two(
+    valid_run_payload: dict[str, object],
+) -> None:
+    run_id = uuid4()
+    draft = DraftGenerated.model_validate(
+        {**_valid_draft_payload(valid_run_payload), "run_id": run_id}
+    )
+    previous = _day12_composition(run_id=run_id)
+    revised = _day12_composition(run_id=run_id, artifact_id=uuid4(), rendered_sha256="b" * 64)
+    reviewed_at = datetime(2026, 8, 25, 12, tzinfo=UTC)
+    payload = {
+        "run_id": run_id,
+        "status": "ready",
+        "result_version": 2,
+        "previous_composition": previous,
+        "brief": draft.brief,
+        "copy": draft.ad_copy,
+        "composition": revised,
+        "critique": {
+            "status": "pass",
+            "issues": [],
+            "warnings": [],
+            "brand_lock_preserved": True,
+            "requires_human_review": False,
+            "reviewed_at": reviewed_at,
+        },
+        "initial_generation_count": 1,
+        "human_revision_count": 1,
+        "technical_attempt_count": 0,
+        "revised_at": reviewed_at,
+    }
+    completed = RevisionCompleted.model_validate(payload)
+    assert completed.result_version == 2
+    assert completed.human_revision_count == 1
+    with pytest.raises(ValidationError):
+        RevisionCompleted.model_validate({**payload, "result_version": 3})
 
 
 def test_analysis_completed_requires_awaiting_brand_lock(
@@ -685,6 +743,8 @@ def test_registry_schema_contains_every_public_contract() -> None:
         "RunSnapshot",
         "JobAccepted",
         "FeedbackRequest",
+        "RevisionChange",
+        "RevisionCompleted",
         "RetryRequest",
         "ExportSummary",
         "ProjectRunContract",
@@ -708,6 +768,7 @@ def test_registry_schema_contains_every_public_contract() -> None:
         ("RunCreated", "created_at"),
         ("JobAccepted", "accepted_at"),
         ("FeedbackRequest", "submitted_at"),
+        ("RevisionCompleted", "revised_at"),
         ("ExportSummary", "exported_at"),
         ("ProjectRunContract", "created_at"),
         ("ProjectRunContract", "updated_at"),

@@ -15,6 +15,8 @@ from cultureshift.composition import PillowCompositor
 from cultureshift.composition_export import CompositionExportService
 from cultureshift.composition_service import CompositionService
 from cultureshift.composition_storage import CompositionArtifactStore
+from cultureshift.contracts import RevisionChange
+from cultureshift.critic import Critic
 from cultureshift.draft_generation import (
     DraftErrorCode,
     DraftGenerationError,
@@ -24,7 +26,10 @@ from cultureshift.draft_generation import (
 from cultureshift.fixture_assets import FixtureAssetRegistry
 from cultureshift.image_provider import FixtureImageProvider
 from cultureshift.rate_limits import FixedWindowRateLimiter
-from cultureshift.repository import SQLiteProjectRunRepository
+from cultureshift.repository import RevisionLimitReachedError, SQLiteProjectRunRepository
+from cultureshift.revision import FixtureRevisionEngine
+from cultureshift.revision_service import RevisionService
+from cultureshift.workflow import RetryAction, RetryCondition
 
 
 def make_client(
@@ -35,6 +40,7 @@ def make_client(
     draft_generator: DraftGenerator | None = None,
     composition_service: CompositionService | None = None,
     composition_export_service: CompositionExportService | None = None,
+    revision_service_factory=None,
 ) -> tuple[TestClient, SQLiteProjectRunRepository]:
     repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
     tokens = CapabilityTokenService(secret=b"a" * 32, audience="cultureshift-api")
@@ -61,6 +67,11 @@ def make_client(
                 draft_generator=draft_generator,
                 composition_service=compositions,
                 composition_export_service=exports,
+                revision_service=(
+                    revision_service_factory(repository, composition_store)
+                    if revision_service_factory is not None
+                    else None
+                ),
             )
         ),
         repository,
@@ -231,6 +242,197 @@ def create_drafted_fixture_run(client: TestClient, valid_run_payload) -> tuple[s
     )
     assert drafted.status_code == 200
     return run_id, token
+
+
+def create_ready_fixture_run(client: TestClient, valid_run_payload) -> tuple[str, str]:
+    run_id, token = create_drafted_fixture_run(client, valid_run_payload)
+    authorization = {"Authorization": f"Bearer {token}"}
+    assert client.post(
+        f"/api/v1/runs/{run_id}/composition", headers=authorization
+    ).status_code == 200
+    assert client.post(
+        f"/api/v1/runs/{run_id}/critic", headers=authorization
+    ).status_code == 200
+    return run_id, token
+
+
+@pytest.mark.parametrize("direction", ["china_to_uk", "uk_to_china"])
+def test_feedback_endpoint_creates_one_bilateral_revision_and_replays(
+    tmp_path, valid_run_payload, direction: str
+) -> None:
+    client, repository = make_client(tmp_path)
+    payload = {**valid_run_payload, "direction": direction}
+    with client:
+        run_id, token = create_ready_fixture_run(client, payload)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "revision_key_1234",
+        }
+        request = {
+            "run_id": run_id,
+            "feedback": "Please shorten the body without changing the CTA.",
+            "requested_changes": ["shorten_body"],
+            "submitted_at": "2026-08-25T12:00:00Z",
+        }
+        first = client.post(
+            f"/api/v1/runs/{run_id}/feedback", headers=headers, json=request
+        )
+        replay = client.post(
+            f"/api/v1/runs/{run_id}/feedback", headers=headers, json=request
+        )
+        conflict = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers=headers,
+            json={**request, "requested_changes": ["shorten_headline"]},
+        )
+        limited = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={**headers, "Idempotency-Key": "revision_key_5678"},
+            json=request,
+        )
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.json() == first.json()
+    assert first.json()["result_version"] == 2
+    assert first.json()["human_revision_count"] == 1
+    assert first.json()["previous_composition"]["artifact_id"] != first.json()[
+        "composition"
+    ]["artifact_id"]
+    assert repository.get(run_id).human_revision_count == 1
+    assert conflict.status_code == 409
+    assert conflict.json() == {"detail": {"code": "idempotency_conflict"}}
+    assert limited.status_code == 409
+    assert limited.json() == {"detail": {"code": "revision_limit_reached"}}
+
+
+def test_feedback_endpoint_requires_capability_key_and_matching_run_without_echo(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    private_feedback = "private feedback must not be echoed"
+    with client:
+        run_id, token = create_ready_fixture_run(client, valid_run_payload)
+        request = {
+            "run_id": str(uuid4()),
+            "feedback": private_feedback,
+            "requested_changes": ["shorten_body"],
+            "submitted_at": "2026-08-25T12:00:00Z",
+        }
+        missing_capability = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={"Idempotency-Key": "revision_key_1234"},
+            json=request,
+        )
+        missing_key = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={"Authorization": f"Bearer {token}"},
+            json=request,
+        )
+        mismatch = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": "revision_key_1234",
+            },
+            json=request,
+        )
+
+    assert missing_capability.status_code == 401
+    assert missing_key.status_code == 422
+    assert missing_key.json() == {"detail": {"code": "invalid_revision_request"}}
+    assert mismatch.status_code == 409
+    assert mismatch.json() == {"detail": {"code": "invalid_run_state"}}
+    assert private_feedback not in mismatch.text
+
+
+def test_retry_endpoint_resumes_server_authorized_revision_once(
+    tmp_path, valid_run_payload
+) -> None:
+    client, repository = make_client(tmp_path)
+    with client:
+        run_id, token = create_ready_fixture_run(client, valid_run_payload)
+        run = repository.get(run_id)
+        operation = repository.claim_feedback_operation(
+            run_id,
+            "a" * 64,
+            "f" * 64,
+            (RevisionChange.SHORTEN_BODY,),
+            "d" * 64,
+            run.updated_at + timedelta(seconds=1),
+        )
+        repository.fail_revision_operation(
+            run_id,
+            operation.id,
+            RetryCondition.CONNECTION_BEFORE_ACCEPTANCE,
+            RetryAction.RETRY_ONCE,
+            run.updated_at + timedelta(seconds=2),
+        )
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "technical_retry_1",
+        }
+        request = {"run_id": run_id, "reason_category": "generation"}
+        first = client.post(
+            f"/api/v1/runs/{run_id}/retry", headers=headers, json=request
+        )
+        replay = client.post(
+            f"/api/v1/runs/{run_id}/retry", headers=headers, json=request
+        )
+
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+    assert first.json()["result_version"] == 2
+    assert first.json()["human_revision_count"] == 1
+    assert first.json()["technical_attempt_count"] == 1
+    persisted = repository.get(run_id)
+    assert persisted.human_revision_count == 1
+    assert persisted.technical_attempt_count == 1
+
+
+def test_feedback_deletes_orphan_artifact_after_finalize_conflict(
+    tmp_path, valid_run_payload, monkeypatch
+) -> None:
+    def revision_service(repository, store):
+        return RevisionService(
+            repository,
+            FixtureRevisionEngine(),
+            FixtureImageProvider(),
+            FixtureAssetRegistry(),
+            PillowCompositor(),
+            store,
+            Path("assets/fonts/NotoSansCJKsc-Regular.otf"),
+            Critic(),
+        )
+
+    client, repository = make_client(
+        tmp_path, revision_service_factory=revision_service
+    )
+    with client:
+        run_id, token = create_ready_fixture_run(client, valid_run_payload)
+        before = {path.name for path in (tmp_path / "compositions").glob("*.png")}
+
+        def lose_finalize_race(*args, **kwargs):
+            raise RevisionLimitReachedError("simulated race")
+
+        monkeypatch.setattr(repository, "complete_revision", lose_finalize_race)
+        response = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": "revision_cleanup_1",
+            },
+            json={
+                "run_id": run_id,
+                "feedback": "Shorten the body.",
+                "requested_changes": ["shorten_body"],
+                "submitted_at": "2026-08-25T12:00:00Z",
+            },
+        )
+        after = {path.name for path in (tmp_path / "compositions").glob("*.png")}
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "revision_limit_reached"}}
+    assert after == before
 
 
 def test_composition_endpoint_is_bodyless_authenticated_and_idempotent(

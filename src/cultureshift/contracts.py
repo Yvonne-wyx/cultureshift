@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     StringConstraints,
     WithJsonSchema,
+    field_validator,
     model_validator,
 )
 from typing_extensions import TypeAliasType
@@ -490,11 +491,60 @@ class JobAccepted(ContractModel):
     accepted_at: UtcDatetime
 
 
+class RevisionChange(StrEnum):
+    SHORTEN_HEADLINE = "shorten_headline"
+    SHORTEN_BODY = "shorten_body"
+
+
 class FeedbackRequest(ContractModel):
     run_id: UUID
     feedback: LongText
-    requested_changes: tuple[ShortText, ...] = Field(min_length=1, max_length=16)
+    requested_changes: tuple[RevisionChange, ...] = Field(min_length=1, max_length=2)
     submitted_at: UtcDatetime
+
+    @field_validator("requested_changes")
+    @classmethod
+    def require_unique_changes(
+        cls, value: tuple[RevisionChange, ...]
+    ) -> tuple[RevisionChange, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("requested changes must be unique")
+        return value
+
+
+class RevisionCompleted(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.READY, RunStatus.FAILED_FINAL]
+    result_version: Annotated[Literal[2], Field(title="RevisionResultVersion")]
+    previous_composition: CompositionGenerated
+    brief: CreativeBrief
+    ad_copy: AdCopy = Field(alias="copy")
+    composition: CompositionGenerated
+    critique: CritiqueReport
+    initial_generation_count: Literal[1]
+    human_revision_count: Literal[1]
+    technical_attempt_count: int = Field(ge=0)
+    revised_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def preserve_revision_identity(self) -> Self:
+        if (
+            self.previous_composition.run_id != self.run_id
+            or self.composition.run_id != self.run_id
+        ):
+            raise ValueError("revision artifacts must match Run")
+        if self.previous_composition.artifact_id == self.composition.artifact_id:
+            raise ValueError("revision composition must use a distinct artifact")
+        if (
+            self.ad_copy.locale is not self.brief.target_locale
+            or self.ad_copy.cta_action_meaning
+            != self.brief.brand_lock.cta_action_meaning
+        ):
+            raise ValueError("revision copy must preserve brief and Brand Lock")
+        rejected = self.critique.status is CritiqueStatus.REJECT
+        if rejected != (self.status is RunStatus.FAILED_FINAL):
+            raise ValueError("revision status must match Critic result")
+        return self
 
 
 class RetryRequest(ContractModel):
@@ -557,6 +607,8 @@ class ContractRegistry(ContractModel):
     composition_generated: CompositionGenerated
     job_accepted: JobAccepted
     feedback_request: FeedbackRequest
+    revision_change: RevisionChange
+    revision_completed: RevisionCompleted
     retry_request: RetryRequest
     export_summary: ExportSummary
     project_run: ProjectRunContract

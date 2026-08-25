@@ -354,58 +354,14 @@ export type Warnings2 = string[];
 export type Feedback = string;
 /**
  * @minItems 1
- * @maxItems 16
+ * @maxItems 2
  */
-export type RequestedChanges =
-  | [string]
-  | [string, string]
-  | [string, string, string]
-  | [string, string, string, string]
-  | [string, string, string, string, string]
-  | [string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string, string, string, string, string]
-  | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
-  | [
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string
-    ]
-  | [
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-      string
-    ];
+export type RequestedChanges = [RevisionChange] | [RevisionChange, RevisionChange];
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "RevisionChange".
+ */
+export type RevisionChange = "shorten_headline" | "shorten_body";
 export type RunId6 = string;
 export type RunId7 = string;
 /**
@@ -437,9 +393,15 @@ export type RunId8 = string;
 export type WarningCodes = string[];
 export type ReasonCategory = "validation" | "generation" | "review";
 export type RunId9 = string;
-export type CapabilityToken = string;
+export type HumanRevisionCount1 = 1;
+export type InitialGenerationCount1 = 1;
+export type RevisionResultVersion = 2;
 export type RunId10 = string;
+export type Status5 = "ready" | "failed_final";
+export type TechnicalAttemptCount1 = number;
+export type CapabilityToken = string;
 export type RunId11 = string;
+export type RunId12 = string;
 /**
  * @maxItems 32
  */
@@ -473,6 +435,8 @@ export interface ContractRegistry {
   project_run: ProjectRunContract;
   result_version: ResultVersion;
   retry_request: RetryRequest;
+  revision_change: RevisionChange;
+  revision_completed: RevisionCompleted;
   run_create: RunCreate;
   run_created: RunCreated;
   run_snapshot: RunSnapshot;
@@ -772,12 +736,30 @@ export interface RetryRequest {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "RevisionCompleted".
+ */
+export interface RevisionCompleted {
+  brief: CreativeBrief;
+  composition: CompositionGenerated;
+  copy: AdCopy;
+  critique: CritiqueReport;
+  human_revision_count: HumanRevisionCount1;
+  initial_generation_count: InitialGenerationCount1;
+  previous_composition: CompositionGenerated;
+  result_version: RevisionResultVersion;
+  revised_at: UtcDatetime;
+  run_id: RunId10;
+  status: Status5;
+  technical_attempt_count: TechnicalAttemptCount1;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "RunCreated".
  */
 export interface RunCreated {
   capability_token: CapabilityToken;
   created_at: UtcDatetime;
-  run_id: RunId10;
+  run_id: RunId11;
   status: RunStatus;
 }
 /**
@@ -787,7 +769,7 @@ export interface RunCreated {
 export interface RunSnapshot {
   created_at: UtcDatetime;
   direction: LocalizationDirection;
-  run_id: RunId11;
+  run_id: RunId12;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes1;

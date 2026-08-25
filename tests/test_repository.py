@@ -11,6 +11,8 @@ from cultureshift.contracts import (
     BrandLock,
     CompositionGenerated,
     CompositionLayer,
+    RevisionChange,
+    RevisionCompleted,
     RunCreate,
 )
 from cultureshift.critic import Critic, CriticRequest
@@ -21,10 +23,15 @@ from cultureshift.repository import (
     CompositionImmutableError,
     CritiqueImmutableError,
     DraftImmutableError,
+    IdempotencyConflictError,
     InvalidRunStateError,
+    OperationInProgressError,
     ProjectRunNotFoundError,
+    RevisionLimitReachedError,
+    RevisionRecord,
     SQLiteProjectRunRepository,
 )
+from cultureshift.workflow import RetryAction, RetryCondition
 
 
 def analyzed_run(repository, valid_run_payload):
@@ -411,7 +418,7 @@ def test_repository_atomically_persists_one_critic_result_and_terminal_state(
     )
     draft = repository.get_draft(run.id)
     assert draft is not None
-    report = Critic(now=lambda: datetime(2026, 8, 25, 9, 0, tzinfo=UTC)).review(
+    report = Critic(now=lambda: run.created_at + timedelta(seconds=1)).review(
         CriticRequest(
             analysis=analysis,
             confirmed_brand_lock=confirmation.brand_lock,
@@ -433,6 +440,227 @@ def test_repository_atomically_persists_one_critic_result_and_terminal_state(
     changed = report.model_copy(update={"warnings": ("changed_evidence",)})
     with pytest.raises(CritiqueImmutableError):
         repository.save_critique(run.id, changed)
+
+
+def test_repository_rejects_reverse_critic_chronology_atomically(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    confirmation = repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    generated = DraftGenerator(FixtureCopywriter()).generate(
+        analysis, analyzed, direction=run.direction
+    )
+    repository.save_draft(
+        run.id,
+        generated.brief,
+        generated.ad_copy,
+        generated.fact_references,
+        generated.rule_ids,
+    )
+    composition = repository.save_composition(
+        run.id, _composition_summary(run.id, analyzed)
+    )
+    draft = repository.get_draft(run.id)
+    assert draft is not None
+    report = Critic(now=lambda: run.created_at - timedelta(seconds=1)).review(
+        CriticRequest(
+            analysis=analysis,
+            confirmed_brand_lock=confirmation.brand_lock,
+            draft=draft,
+            composition=composition,
+        )
+    )
+
+    with pytest.raises(InvalidRunStateError, match="Critic time precedes Run"):
+        repository.save_critique(run.id, report)
+
+    assert repository.get(run.id).status is ProjectRunStatus.IN_PROGRESS
+    assert repository.get_critique(run.id) is None
+
+
+def _ready_run(repository, valid_run_payload):
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    confirmation = repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    generated = DraftGenerator(FixtureCopywriter()).generate(
+        analysis, analyzed, direction=run.direction
+    )
+    draft = repository.save_draft(
+        run.id,
+        generated.brief,
+        generated.ad_copy,
+        generated.fact_references,
+        generated.rule_ids,
+    )
+    composition = repository.save_composition(
+        run.id, _composition_summary(run.id, analyzed)
+    )
+    report = Critic(now=lambda: run.created_at + timedelta(seconds=1)).review(
+        CriticRequest(
+            analysis=analysis,
+            confirmed_brand_lock=confirmation.brand_lock,
+            draft=draft,
+            composition=composition,
+        )
+    )
+    repository.save_critique(run.id, report)
+    return repository.get(run.id), draft, composition, report
+
+
+def test_feedback_claim_distinguishes_active_operation_and_key_conflict(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, _, _, _ = _ready_run(repository, valid_run_payload)
+
+    claimed = repository.claim_feedback_operation(
+        run.id,
+        "a" * 64,
+        "f" * 64,
+        (RevisionChange.SHORTEN_BODY,),
+        "d" * 64,
+        run.updated_at + timedelta(seconds=1),
+    )
+
+    assert claimed.state.value == "in_progress"
+    assert repository.get(run.id).status is ProjectRunStatus.IN_PROGRESS
+    with pytest.raises(OperationInProgressError):
+        repository.claim_feedback_operation(
+            run.id,
+            "a" * 64,
+            "f" * 64,
+            (RevisionChange.SHORTEN_BODY,),
+            "d" * 64,
+            run.updated_at + timedelta(seconds=1),
+        )
+    with pytest.raises(IdempotencyConflictError):
+        repository.claim_feedback_operation(
+            run.id,
+            "a" * 64,
+            "e" * 64,
+            (RevisionChange.SHORTEN_HEADLINE,),
+            "c" * 64,
+            run.updated_at + timedelta(seconds=1),
+        )
+
+
+def test_repository_finalizes_one_revision_and_replays_without_double_count(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, draft, previous, critique = _ready_run(repository, valid_run_payload)
+    claimed_at = run.updated_at + timedelta(seconds=1)
+    operation = repository.claim_feedback_operation(
+        run.id,
+        "a" * 64,
+        "f" * 64,
+        (RevisionChange.SHORTEN_BODY,),
+        "d" * 64,
+        claimed_at,
+    )
+    revised_composition = previous.model_copy(
+        update={
+            "artifact_id": uuid4(),
+            "rendered_sha256": "b" * 64,
+            "generated_at": claimed_at,
+        }
+    )
+    revised_at = claimed_at + timedelta(seconds=1)
+    revision = RevisionRecord(
+        run_id=run.id,
+        result_version=2,
+        requested_changes=(RevisionChange.SHORTEN_BODY,),
+        feedback_digest="d" * 64,
+        draft=draft,
+        composition=revised_composition,
+        critique=critique.model_copy(update={"reviewed_at": revised_at}),
+        revised_at=revised_at,
+    )
+    response = RevisionCompleted(
+        run_id=run.id,
+        status="ready",
+        result_version=2,
+        previous_composition=previous,
+        brief=draft.brief,
+        copy=draft.ad_copy,
+        composition=revised_composition,
+        critique=revision.critique,
+        initial_generation_count=1,
+        human_revision_count=1,
+        technical_attempt_count=0,
+        revised_at=revised_at,
+    )
+
+    stored = repository.complete_revision(run.id, operation.id, revision, response)
+    replay = repository.claim_feedback_operation(
+        run.id,
+        "a" * 64,
+        "f" * 64,
+        (RevisionChange.SHORTEN_BODY,),
+        "d" * 64,
+        claimed_at,
+    )
+
+    assert repository.get_revision(run.id) == stored
+    assert replay.public_response == response
+    assert repository.get(run.id).human_revision_count == 1
+    with pytest.raises(RevisionLimitReachedError):
+        repository.claim_feedback_operation(
+            run.id,
+            "b" * 64,
+            "e" * 64,
+            (RevisionChange.SHORTEN_HEADLINE,),
+            "c" * 64,
+            revised_at + timedelta(seconds=1),
+        )
+
+
+def test_retry_claim_increments_technical_attempt_once(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, _, _, _ = _ready_run(repository, valid_run_payload)
+    operation = repository.claim_feedback_operation(
+        run.id,
+        "a" * 64,
+        "f" * 64,
+        (RevisionChange.SHORTEN_BODY,),
+        "d" * 64,
+        run.updated_at + timedelta(seconds=1),
+    )
+    repository.fail_revision_operation(
+        run.id,
+        operation.id,
+        RetryCondition.CONNECTION_BEFORE_ACCEPTANCE,
+        RetryAction.RETRY_ONCE,
+        run.updated_at + timedelta(seconds=2),
+    )
+
+    retry = repository.claim_retry_operation(
+        run.id,
+        "b" * 64,
+        "e" * 64,
+        run.updated_at + timedelta(seconds=3),
+    )
+
+    assert retry.requested_changes == operation.requested_changes
+    assert repository.get(run.id).technical_attempt_count == 1
+    with pytest.raises(OperationInProgressError):
+        repository.claim_retry_operation(
+            run.id,
+            "b" * 64,
+            "e" * 64,
+            run.updated_at + timedelta(seconds=3),
+        )
+    assert repository.get(run.id).technical_attempt_count == 1
 
 
 def test_repository_saves_and_replays_one_immutable_draft(

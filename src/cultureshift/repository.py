@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
 
@@ -18,9 +19,12 @@ from cultureshift.contracts import (
     CreativeBrief,
     CritiqueReport,
     CritiqueStatus,
+    RevisionChange,
+    RevisionCompleted,
     RunCreate,
 )
 from cultureshift.domain import ProjectRun, ProjectRunStatus, utc_now
+from cultureshift.workflow import RetryAction, RetryCondition
 
 
 class ProjectRunNotFoundError(LookupError):
@@ -51,6 +55,30 @@ class CritiqueImmutableError(ValueError):
     pass
 
 
+class IdempotencyConflictError(ValueError):
+    pass
+
+
+class OperationInProgressError(ValueError):
+    pass
+
+
+class RevisionLimitReachedError(ValueError):
+    pass
+
+
+class OperationKind(StrEnum):
+    FEEDBACK = "feedback"
+    RETRY = "retry"
+
+
+class OperationState(StrEnum):
+    IN_PROGRESS = "in_progress"
+    SUCCEEDED = "succeeded"
+    FAILED_RETRYABLE = "failed_retryable"
+    FAILED_FINAL = "failed_final"
+
+
 @dataclass(frozen=True)
 class BrandLockConfirmationRecord:
     brand_lock: BrandLock
@@ -70,6 +98,35 @@ class DraftRecord:
 class CritiqueRecord:
     report: CritiqueReport
     reviewed_at: datetime
+
+
+@dataclass(frozen=True)
+class RevisionRecord:
+    run_id: UUID
+    result_version: int
+    requested_changes: tuple[RevisionChange, ...]
+    feedback_digest: str
+    draft: DraftRecord
+    composition: CompositionGenerated
+    critique: CritiqueReport
+    revised_at: datetime
+
+
+@dataclass(frozen=True)
+class OperationRecord:
+    id: int
+    run_id: UUID
+    kind: OperationKind
+    key_digest: str
+    fingerprint: str
+    state: OperationState
+    requested_changes: tuple[RevisionChange, ...]
+    feedback_digest: str | None
+    retry_condition: RetryCondition | None
+    retry_action: RetryAction | None
+    public_response: RevisionCompleted | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class SQLiteProjectRunRepository:
@@ -188,6 +245,46 @@ class SQLiteProjectRunRepository:
                 UPDATE project_run_contexts
                 SET initial_generation_count = 1
                 WHERE composition_json IS NOT NULL AND initial_generation_count = 0
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_run_revisions (
+                    run_id TEXT PRIMARY KEY,
+                    result_version INTEGER NOT NULL CHECK(result_version = 2),
+                    requested_changes_json TEXT NOT NULL,
+                    feedback_digest TEXT NOT NULL,
+                    creative_brief_json TEXT NOT NULL,
+                    ad_copy_json TEXT NOT NULL,
+                    fact_references_json TEXT NOT NULL,
+                    rule_ids_json TEXT NOT NULL,
+                    composition_json TEXT NOT NULL,
+                    critique_json TEXT NOT NULL,
+                    revised_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_run_operations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    operation_kind TEXT NOT NULL
+                        CHECK(operation_kind IN ('feedback', 'retry')),
+                    idempotency_key_digest TEXT NOT NULL,
+                    request_fingerprint TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN (
+                        'in_progress', 'succeeded', 'failed_retryable', 'failed_final'
+                    )),
+                    requested_changes_json TEXT,
+                    feedback_digest TEXT,
+                    retry_condition TEXT,
+                    retry_action TEXT,
+                    public_response_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(run_id, operation_kind, idempotency_key_digest)
+                )
                 """
             )
             legacy_drafts = connection.execute(
@@ -336,6 +433,371 @@ class SQLiteProjectRunRepository:
         if row is None:
             raise ProjectRunNotFoundError(str(run_id))
         return self._critique_record(row)
+
+    @staticmethod
+    def _operation_record(row: sqlite3.Row) -> OperationRecord:
+        changes = json.loads(row["requested_changes_json"] or "[]")
+        return OperationRecord(
+            id=row["id"],
+            run_id=UUID(row["run_id"]),
+            kind=OperationKind(row["operation_kind"]),
+            key_digest=row["idempotency_key_digest"],
+            fingerprint=row["request_fingerprint"],
+            state=OperationState(row["state"]),
+            requested_changes=tuple(RevisionChange(value) for value in changes),
+            feedback_digest=row["feedback_digest"],
+            retry_condition=(
+                None
+                if row["retry_condition"] is None
+                else RetryCondition(row["retry_condition"])
+            ),
+            retry_action=(
+                None if row["retry_action"] is None else RetryAction(row["retry_action"])
+            ),
+            public_response=(
+                None
+                if row["public_response_json"] is None
+                else RevisionCompleted.model_validate_json(row["public_response_json"])
+            ),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _revision_record(row: sqlite3.Row) -> RevisionRecord:
+        revised_at = datetime.fromisoformat(row["revised_at"])
+        return RevisionRecord(
+            run_id=UUID(row["run_id"]),
+            result_version=row["result_version"],
+            requested_changes=tuple(
+                RevisionChange(value)
+                for value in json.loads(row["requested_changes_json"])
+            ),
+            feedback_digest=row["feedback_digest"],
+            draft=DraftRecord(
+                brief=CreativeBrief.model_validate_json(row["creative_brief_json"]),
+                ad_copy=AdCopy.model_validate_json(row["ad_copy_json"]),
+                fact_references=tuple(json.loads(row["fact_references_json"])),
+                rule_ids=tuple(json.loads(row["rule_ids_json"])),
+                generated_at=revised_at,
+            ),
+            composition=CompositionGenerated.model_validate_json(row["composition_json"]),
+            critique=CritiqueReport.model_validate_json(row["critique_json"]),
+            revised_at=revised_at,
+        )
+
+    def get_revision(self, run_id: UUID | str) -> RevisionRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM project_run_revisions WHERE run_id = ?",
+                (str(run_id),),
+            ).fetchone()
+        return None if row is None else self._revision_record(row)
+
+    def claim_feedback_operation(
+        self,
+        run_id: UUID | str,
+        key_digest: str,
+        fingerprint: str,
+        requested_changes: tuple[RevisionChange, ...],
+        feedback_digest: str,
+        claimed_at: datetime,
+    ) -> OperationRecord:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT * FROM project_run_operations
+                WHERE run_id = ? AND operation_kind = 'feedback'
+                  AND idempotency_key_digest = ?
+                """,
+                (str(run_id), key_digest),
+            ).fetchone()
+            if existing is not None:
+                record = self._operation_record(existing)
+                if record.fingerprint != fingerprint:
+                    raise IdempotencyConflictError("idempotency fingerprint mismatch")
+                if record.state is OperationState.SUCCEEDED:
+                    return record
+                raise OperationInProgressError("operation is not replayable yet")
+            if connection.execute(
+                "SELECT 1 FROM project_run_revisions WHERE run_id = ?", (str(run_id),)
+            ).fetchone():
+                raise RevisionLimitReachedError("one revision already exists")
+            active = connection.execute(
+                """
+                SELECT 1 FROM project_run_operations
+                WHERE run_id = ? AND operation_kind = 'feedback' AND state = 'in_progress'
+                """,
+                (str(run_id),),
+            ).fetchone()
+            if active is not None:
+                raise OperationInProgressError("another feedback operation is active")
+            run = connection.execute(
+                "SELECT status FROM project_runs WHERE id = ?", (str(run_id),)
+            ).fetchone()
+            if run is None:
+                raise ProjectRunNotFoundError(str(run_id))
+            if run["status"] != ProjectRunStatus.READY.value:
+                raise InvalidRunStateError("ready Run required")
+            cursor = connection.execute(
+                """
+                INSERT INTO project_run_operations (
+                    run_id, operation_kind, idempotency_key_digest,
+                    request_fingerprint, state, requested_changes_json,
+                    feedback_digest, created_at, updated_at
+                ) VALUES (?, 'feedback', ?, ?, 'in_progress', ?, ?, ?, ?)
+                """,
+                (
+                    str(run_id),
+                    key_digest,
+                    fingerprint,
+                    json.dumps([item.value for item in requested_changes], separators=(",", ":")),
+                    feedback_digest,
+                    claimed_at.isoformat(),
+                    claimed_at.isoformat(),
+                ),
+            )
+            updated = connection.execute(
+                "UPDATE project_runs SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+                (
+                    ProjectRunStatus.IN_PROGRESS.value,
+                    claimed_at.isoformat(),
+                    str(run_id),
+                    ProjectRunStatus.READY.value,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OperationInProgressError("feedback claim lost")
+            row = connection.execute(
+                "SELECT * FROM project_run_operations WHERE id = ?", (cursor.lastrowid,)
+            ).fetchone()
+            assert row is not None
+            return self._operation_record(row)
+
+    def fail_revision_operation(
+        self,
+        run_id: UUID | str,
+        operation_id: int,
+        condition: RetryCondition,
+        action: RetryAction,
+        failed_at: datetime,
+    ) -> OperationRecord:
+        target = (
+            ProjectRunStatus.FAILED_RETRYABLE
+            if action
+            in {
+                RetryAction.RETRY_ONCE,
+                RetryAction.REPAIR_ONCE,
+                RetryAction.RECOMPOSE_SAME_LAYERS_ONCE,
+            }
+            else ProjectRunStatus.FAILED_FINAL
+        )
+        state = (
+            OperationState.FAILED_RETRYABLE
+            if target is ProjectRunStatus.FAILED_RETRYABLE
+            else OperationState.FAILED_FINAL
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE project_run_operations
+                SET state = ?, retry_condition = ?, retry_action = ?, updated_at = ?
+                WHERE id = ? AND run_id = ? AND state = 'in_progress'
+                """,
+                (
+                    state.value,
+                    condition.value,
+                    action.value,
+                    failed_at.isoformat(),
+                    operation_id,
+                    str(run_id),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise InvalidRunStateError("active operation required")
+            connection.execute(
+                "UPDATE project_runs SET status = ?, updated_at = ? WHERE id = ?",
+                (target.value, failed_at.isoformat(), str(run_id)),
+            )
+            row = connection.execute(
+                "SELECT * FROM project_run_operations WHERE id = ?", (operation_id,)
+            ).fetchone()
+            assert row is not None
+            return self._operation_record(row)
+
+    def claim_retry_operation(
+        self,
+        run_id: UUID | str,
+        key_digest: str,
+        fingerprint: str,
+        claimed_at: datetime,
+    ) -> OperationRecord:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT * FROM project_run_operations
+                WHERE run_id = ? AND operation_kind = 'retry'
+                  AND idempotency_key_digest = ?
+                """,
+                (str(run_id), key_digest),
+            ).fetchone()
+            if existing is not None:
+                record = self._operation_record(existing)
+                if record.fingerprint != fingerprint:
+                    raise IdempotencyConflictError("idempotency fingerprint mismatch")
+                if record.state is OperationState.SUCCEEDED:
+                    return record
+                raise OperationInProgressError("retry is not replayable yet")
+            run = connection.execute(
+                "SELECT status FROM project_runs WHERE id = ?", (str(run_id),)
+            ).fetchone()
+            if run is None:
+                raise ProjectRunNotFoundError(str(run_id))
+            if run["status"] != ProjectRunStatus.FAILED_RETRYABLE.value:
+                raise InvalidRunStateError("server-authorized retry required")
+            source = connection.execute(
+                """
+                SELECT * FROM project_run_operations
+                WHERE run_id = ? AND operation_kind = 'feedback'
+                  AND state = 'failed_retryable'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(run_id),),
+            ).fetchone()
+            if source is None:
+                raise InvalidRunStateError("stored retry decision required")
+            source_record = self._operation_record(source)
+            cursor = connection.execute(
+                """
+                INSERT INTO project_run_operations (
+                    run_id, operation_kind, idempotency_key_digest,
+                    request_fingerprint, state, requested_changes_json,
+                    feedback_digest, retry_condition, retry_action,
+                    created_at, updated_at
+                ) VALUES (?, 'retry', ?, ?, 'in_progress', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(run_id),
+                    key_digest,
+                    fingerprint,
+                    json.dumps(
+                        [item.value for item in source_record.requested_changes],
+                        separators=(",", ":"),
+                    ),
+                    source_record.feedback_digest,
+                    source_record.retry_condition.value
+                    if source_record.retry_condition is not None
+                    else None,
+                    source_record.retry_action.value
+                    if source_record.retry_action is not None
+                    else None,
+                    claimed_at.isoformat(),
+                    claimed_at.isoformat(),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE project_run_contexts
+                SET technical_attempt_count = technical_attempt_count + 1
+                WHERE run_id = ?
+                """,
+                (str(run_id),),
+            )
+            connection.execute(
+                "UPDATE project_runs SET status = ?, updated_at = ? WHERE id = ?",
+                (ProjectRunStatus.IN_PROGRESS.value, claimed_at.isoformat(), str(run_id)),
+            )
+            row = connection.execute(
+                "SELECT * FROM project_run_operations WHERE id = ?", (cursor.lastrowid,)
+            ).fetchone()
+            assert row is not None
+            return self._operation_record(row)
+
+    def complete_revision(
+        self,
+        run_id: UUID | str,
+        operation_id: int,
+        revision: RevisionRecord,
+        public_response: RevisionCompleted,
+    ) -> RevisionRecord:
+        target = (
+            ProjectRunStatus.FAILED_FINAL
+            if revision.critique.status is CritiqueStatus.REJECT
+            else ProjectRunStatus.READY
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            operation = connection.execute(
+                "SELECT * FROM project_run_operations WHERE id = ? AND run_id = ?",
+                (operation_id, str(run_id)),
+            ).fetchone()
+            if operation is None or operation["state"] != OperationState.IN_PROGRESS.value:
+                raise InvalidRunStateError("active revision operation required")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO project_run_revisions (
+                        run_id, result_version, requested_changes_json, feedback_digest,
+                        creative_brief_json, ad_copy_json, fact_references_json,
+                        rule_ids_json, composition_json, critique_json, revised_at
+                    ) VALUES (?, 2, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(run_id),
+                        json.dumps(
+                            [item.value for item in revision.requested_changes],
+                            separators=(",", ":"),
+                        ),
+                        revision.feedback_digest,
+                        revision.draft.brief.model_dump_json(),
+                        revision.draft.ad_copy.model_dump_json(),
+                        json.dumps(revision.draft.fact_references, separators=(",", ":")),
+                        json.dumps(revision.draft.rule_ids, separators=(",", ":")),
+                        revision.composition.model_dump_json(),
+                        revision.critique.model_dump_json(),
+                        revision.revised_at.isoformat(),
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise RevisionLimitReachedError("one revision already exists") from error
+            context = connection.execute(
+                """
+                UPDATE project_run_contexts SET human_revision_count = 1
+                WHERE run_id = ? AND human_revision_count = 0
+                """,
+                (str(run_id),),
+            )
+            if context.rowcount != 1:
+                raise RevisionLimitReachedError("one revision already exists")
+            encoded = public_response.model_dump_json(by_alias=True)
+            connection.execute(
+                """
+                UPDATE project_run_operations
+                SET state = 'succeeded', public_response_json = ?, updated_at = ?
+                WHERE id = ? AND state = 'in_progress'
+                """,
+                (encoded, revision.revised_at.isoformat(), operation_id),
+            )
+            if operation["operation_kind"] == OperationKind.RETRY.value:
+                connection.execute(
+                    """
+                    UPDATE project_run_operations
+                    SET state = 'succeeded', public_response_json = ?, updated_at = ?
+                    WHERE run_id = ? AND operation_kind = 'feedback'
+                      AND state = 'failed_retryable'
+                    """,
+                    (encoded, revision.revised_at.isoformat(), str(run_id)),
+                )
+            connection.execute(
+                "UPDATE project_runs SET status = ?, updated_at = ? WHERE id = ?",
+                (target.value, revision.revised_at.isoformat(), str(run_id)),
+            )
+        stored = self.get_revision(run_id)
+        assert stored is not None
+        return stored
 
     @staticmethod
     def _confirmation_record(row: sqlite3.Row) -> BrandLockConfirmationRecord | None:
@@ -551,7 +1013,7 @@ class SQLiteProjectRunRepository:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """
-                SELECT r.status, c.confirmed_brand_lock_json,
+                SELECT r.status, r.created_at, c.confirmed_brand_lock_json,
                        c.draft_generated_at, c.composition_json,
                        c.initial_generation_count,
                        c.critique_json, c.critic_reviewed_at
@@ -563,6 +1025,9 @@ class SQLiteProjectRunRepository:
             ).fetchone()
             if row is None:
                 raise ProjectRunNotFoundError(str(run_id))
+            created_at = datetime.fromisoformat(row["created_at"])
+            if report.reviewed_at < created_at:
+                raise InvalidRunStateError("Critic time precedes Run creation")
             existing = self._critique_record(row)
             if existing is not None:
                 if existing.report == report:

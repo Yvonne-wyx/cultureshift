@@ -953,11 +953,9 @@
         },
         "requested_changes": {
           "items": {
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
+            "$ref": "#/$defs/RevisionChange"
           },
-          "maxItems": 16,
+          "maxItems": 2,
           "minItems": 1,
           "title": "Requested Changes",
           "type": "array"
@@ -1152,6 +1150,86 @@
         "reason_category"
       ],
       "title": "RetryRequest",
+      "type": "object"
+    },
+    "RevisionChange": {
+      "enum": [
+        "shorten_headline",
+        "shorten_body"
+      ],
+      "title": "RevisionChange",
+      "type": "string"
+    },
+    "RevisionCompleted": {
+      "additionalProperties": false,
+      "properties": {
+        "brief": {
+          "$ref": "#/$defs/CreativeBrief"
+        },
+        "composition": {
+          "$ref": "#/$defs/CompositionGenerated"
+        },
+        "copy": {
+          "$ref": "#/$defs/AdCopy"
+        },
+        "critique": {
+          "$ref": "#/$defs/CritiqueReport"
+        },
+        "human_revision_count": {
+          "const": 1,
+          "title": "Human Revision Count",
+          "type": "integer"
+        },
+        "initial_generation_count": {
+          "const": 1,
+          "title": "Initial Generation Count",
+          "type": "integer"
+        },
+        "previous_composition": {
+          "$ref": "#/$defs/CompositionGenerated"
+        },
+        "result_version": {
+          "const": 2,
+          "title": "RevisionResultVersion",
+          "type": "integer"
+        },
+        "revised_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "failed_final"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "technical_attempt_count": {
+          "minimum": 0,
+          "title": "Technical Attempt Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "result_version",
+        "previous_composition",
+        "brief",
+        "copy",
+        "composition",
+        "critique",
+        "initial_generation_count",
+        "human_revision_count",
+        "technical_attempt_count",
+        "revised_at"
+      ],
+      "title": "RevisionCompleted",
       "type": "object"
     },
     "RunCreate": {
@@ -1408,6 +1486,12 @@
     "retry_request": {
       "$ref": "#/$defs/RetryRequest"
     },
+    "revision_change": {
+      "$ref": "#/$defs/RevisionChange"
+    },
+    "revision_completed": {
+      "$ref": "#/$defs/RevisionCompleted"
+    },
     "run_create": {
       "$ref": "#/$defs/RunCreate"
     },
@@ -1441,6 +1525,8 @@
     "composition_generated",
     "job_accepted",
     "feedback_request",
+    "revision_change",
+    "revision_completed",
     "retry_request",
     "export_summary",
     "project_run"

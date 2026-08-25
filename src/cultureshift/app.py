@@ -58,6 +58,9 @@ from cultureshift.contracts import (
     CompositionGenerated,
     CritiqueCompleted,
     DraftGenerated,
+    FeedbackRequest,
+    RetryRequest,
+    RevisionCompleted,
     RunCreate,
     RunCreated,
     RunSnapshot,
@@ -81,6 +84,12 @@ from cultureshift.repository import (
     InvalidRunStateError,
     ProjectRunNotFoundError,
     SQLiteProjectRunRepository,
+)
+from cultureshift.revision import FixtureRevisionEngine
+from cultureshift.revision_service import (
+    RevisionService,
+    RevisionServiceError,
+    RevisionServiceErrorCode,
 )
 
 
@@ -112,6 +121,7 @@ def create_app(
     composition_service: CompositionService | None = None,
     composition_export_service: CompositionExportService | None = None,
     critic: Critic | None = None,
+    revision_service: RevisionService | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -135,6 +145,19 @@ def create_app(
         runs, composition_store
     )
     reviews = critic or Critic()
+    revisions = revision_service or RevisionService(
+        runs,
+        FixtureRevisionEngine(),
+        FixtureImageProvider(),
+        FixtureAssetRegistry(),
+        PillowCompositor(),
+        composition_store,
+        Path(__file__).resolve().parents[2]
+        / "assets"
+        / "fonts"
+        / "NotoSansCJKsc-Regular.otf",
+        reviews,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -768,6 +791,91 @@ def create_app(
             technical_attempt_count=run.technical_attempt_count,
             reviewed_at=report.reviewed_at,
         )
+
+    def require_run_update_capability(run_id: UUID, request: Request) -> None:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.UPDATE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+
+    def revision_failure(error: RevisionServiceError) -> HTTPException:
+        if error.code is RevisionServiceErrorCode.RUN_NOT_FOUND:
+            status_code = status.HTTP_404_NOT_FOUND
+        elif error.code is RevisionServiceErrorCode.INVALID_REVISION_REQUEST:
+            status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+        elif error.code in {
+            RevisionServiceErrorCode.REVISION_FAILED,
+            RevisionServiceErrorCode.RETRY_FAILED,
+        }:
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        else:
+            status_code = status.HTTP_409_CONFLICT
+        return HTTPException(status_code=status_code, detail={"code": error.code.value})
+
+    @application.post(
+        "/api/v1/runs/{run_id}/feedback",
+        response_model=RevisionCompleted,
+        tags=["runs"],
+    )
+    async def submit_feedback(
+        run_id: UUID, feedback: FeedbackRequest, request: Request
+    ) -> RevisionCompleted:
+        require_run_update_capability(run_id, request)
+        idempotency_key = request.headers.get("Idempotency-Key", "")
+        if not idempotency_key:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": "invalid_revision_request"},
+            )
+        if feedback.run_id != run_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            )
+        try:
+            return revisions.submit_feedback(feedback, idempotency_key)
+        except RevisionServiceError as error:
+            raise revision_failure(error) from None
+
+    @application.post(
+        "/api/v1/runs/{run_id}/retry",
+        response_model=RevisionCompleted,
+        tags=["runs"],
+    )
+    async def retry_revision(
+        run_id: UUID, retry: RetryRequest, request: Request
+    ) -> RevisionCompleted:
+        require_run_update_capability(run_id, request)
+        idempotency_key = request.headers.get("Idempotency-Key", "")
+        if not idempotency_key:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": "invalid_revision_request"},
+            )
+        if retry.run_id != run_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            )
+        try:
+            return revisions.retry(retry, idempotency_key)
+        except RevisionServiceError as error:
+            raise revision_failure(error) from None
 
     def require_composition_read_capability(run_id: UUID, request: Request) -> None:
         authorization = request.headers.get("Authorization", "")
