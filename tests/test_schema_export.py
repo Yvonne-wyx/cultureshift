@@ -16,6 +16,9 @@ def test_contract_schema_is_deterministic_and_contains_public_definitions() -> N
     schema = json.loads(first)
     assert schema["title"] == "ContractRegistry"
     assert "RunCreate" in schema["$defs"]
+    assert {"CritiqueCompleted", "CritiqueIssue"}.issubset(schema["$defs"])
+    statuses = set(schema["$defs"]["CritiqueStatus"]["enum"])
+    assert statuses == {"pass", "revise", "needs_human_review", "reject"}
 
 
 def test_write_and_check_detect_stale_contract_schema(tmp_path) -> None:

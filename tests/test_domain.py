@@ -18,6 +18,9 @@ def test_project_run_defaults_are_safe_and_serializable() -> None:
     assert run.status is ProjectRunStatus.PENDING
     assert run.created_at.tzinfo is UTC
     assert run.updated_at == run.created_at
+    assert run.initial_generation_count == 0
+    assert run.human_revision_count == 0
+    assert run.technical_attempt_count == 0
     assert ProjectRun.model_validate_json(run.model_dump_json()) == run
 
 
@@ -54,11 +57,16 @@ def test_project_run_status_transition_updates_timestamp() -> None:
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.BLOCKED),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.AWAITING_BRAND_LOCK),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.COMPLETED),
+        (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.READY),
+        (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED_RETRYABLE),
+        (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED_FINAL),
         (ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED),
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.IN_PROGRESS),
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.FAILED),
         (ProjectRunStatus.AWAITING_BRAND_LOCK, ProjectRunStatus.IN_PROGRESS),
         (ProjectRunStatus.AWAITING_BRAND_LOCK, ProjectRunStatus.FAILED),
+        (ProjectRunStatus.READY, ProjectRunStatus.IN_PROGRESS),
+        (ProjectRunStatus.FAILED_RETRYABLE, ProjectRunStatus.IN_PROGRESS),
     ],
 )
 def test_project_run_accepts_legal_status_transitions(
@@ -78,6 +86,8 @@ def test_project_run_accepts_legal_status_transitions(
         (ProjectRunStatus.BLOCKED, ProjectRunStatus.COMPLETED),
         (ProjectRunStatus.COMPLETED, ProjectRunStatus.IN_PROGRESS),
         (ProjectRunStatus.FAILED, ProjectRunStatus.IN_PROGRESS),
+        (ProjectRunStatus.PENDING, ProjectRunStatus.READY),
+        (ProjectRunStatus.FAILED_FINAL, ProjectRunStatus.IN_PROGRESS),
     ],
 )
 def test_project_run_rejects_invalid_status_transitions(
@@ -104,4 +114,20 @@ def test_project_run_rejects_sensitive_or_unstructured_warning_codes() -> None:
         ProjectRun(
             direction=LocalizationDirection.CHINA_TO_UK,
             warning_codes=("raw user content",),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("initial_generation_count", 2),
+        ("human_revision_count", 2),
+        ("technical_attempt_count", -1),
+    ],
+)
+def test_project_run_rejects_invalid_workflow_counters(field: str, value: int) -> None:
+    with pytest.raises(ValidationError):
+        ProjectRun(
+            direction=LocalizationDirection.CHINA_TO_UK,
+            **{field: value},
         )

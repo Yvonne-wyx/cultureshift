@@ -281,6 +281,73 @@ def test_composition_endpoint_requires_capability_and_day11_draft(
     assert no_draft.json() == {"detail": {"code": "draft_unavailable"}}
 
 
+@pytest.mark.parametrize("direction", ["china_to_uk", "uk_to_china"])
+def test_critic_endpoint_is_bodyless_authenticated_atomic_and_idempotent(
+    tmp_path, valid_run_payload, direction: str
+) -> None:
+    client, repository = make_client(tmp_path)
+    payload = {**valid_run_payload, "direction": direction}
+    with client:
+        run_id, token = create_drafted_fixture_run(client, payload)
+        composed = client.post(
+            f"/api/v1/runs/{run_id}/composition",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        first = client.post(
+            f"/api/v1/runs/{run_id}/critic",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        retry = client.post(
+            f"/api/v1/runs/{run_id}/critic",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        missing = client.post(f"/api/v1/runs/{run_id}/critic")
+        body_rejected = client.post(
+            f"/api/v1/runs/{run_id}/critic",
+            json={"private_prompt": "do not echo"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert composed.status_code == 200
+    assert first.status_code == retry.status_code == 200
+    assert first.json() == retry.json()
+    assert first.json()["status"] == "ready"
+    assert first.json()["critique"]["status"] == "pass"
+    assert first.json()["initial_generation_count"] == 1
+    assert first.json()["human_revision_count"] == 0
+    assert first.json()["technical_attempt_count"] == 0
+    assert repository.get_critique(run_id) is not None
+    assert missing.status_code == 401
+    assert missing.json() == {"detail": {"code": "invalid_capability"}}
+    assert body_rejected.status_code == 422
+    assert body_rejected.json() == {"detail": {"code": "critic_body_not_allowed"}}
+    assert "do not echo" not in body_rejected.text
+
+
+def test_critic_endpoint_rejects_wrong_run_token_and_missing_composition(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_drafted_fixture_run(client, valid_run_payload)
+        _, wrong_token = create_run(client, valid_run_payload)
+        wrong_subject = client.post(
+            f"/api/v1/runs/{run_id}/critic",
+            headers={"Authorization": f"Bearer {wrong_token}"},
+        )
+        no_composition = client.post(
+            f"/api/v1/runs/{run_id}/critic",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert wrong_subject.status_code == 403
+    assert wrong_subject.json() == {
+        "detail": {"code": "capability_subject_mismatch"}
+    }
+    assert no_composition.status_code == 409
+    assert no_composition.json() == {"detail": {"code": "invalid_run_state"}}
+
+
 def test_composition_exports_are_authenticated_integrity_checked_attachments(
     tmp_path, valid_run_payload
 ) -> None:

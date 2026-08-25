@@ -52,7 +52,13 @@ def _valid_result_payload(request: RunCreate) -> dict[str, object]:
             "cta_label": "Try fixture",
             "cta_action_meaning": request.brand_lock.cta_action_meaning,
         },
-        "critique": {"brand_lock_preserved": True},
+        "critique": {
+            "status": "pass",
+            "issues": [],
+            "brand_lock_preserved": True,
+            "requires_human_review": False,
+            "reviewed_at": datetime(2026, 8, 10, tzinfo=UTC),
+        },
         "created_at": datetime(2026, 8, 10, tzinfo=UTC),
     }
 
@@ -63,6 +69,9 @@ def test_contract_enums_have_stable_public_values() -> None:
     assert [item.value for item in ExecutionMode] == ["fixture", "live"]
     assert AssetKind.RENDERED_AD.value == "rendered_ad"
     assert RunStatus.PENDING.value == "pending"
+    assert RunStatus.READY.value == "ready"
+    assert RunStatus.FAILED_RETRYABLE.value == "failed_retryable"
+    assert RunStatus.FAILED_FINAL.value == "failed_final"
 
 
 def test_analysis_completed_requires_awaiting_brand_lock(
@@ -579,9 +588,20 @@ def test_result_version_fails_when_cta_meaning_changes(
             "cta_action_meaning": "A different action",
         },
         "critique": {
+            "status": "needs_human_review",
+            "issues": [
+                {
+                    "code": "human_review_required",
+                    "category": "culture",
+                    "severity": "warning",
+                    "message": "A hypothesis remains pending review.",
+                    "requires_human_review": True,
+                }
+            ],
             "warnings": ["human_review_required"],
             "brand_lock_preserved": True,
             "requires_human_review": True,
+            "reviewed_at": datetime(2026, 8, 10, tzinfo=UTC),
         },
         "created_at": datetime(2026, 8, 10, tzinfo=UTC),
     }
@@ -622,9 +642,20 @@ def test_result_version_fails_when_analysis_brand_lock_changes(
             "cta_action_meaning": request.brand_lock.cta_action_meaning,
         },
         "critique": {
+            "status": "needs_human_review",
+            "issues": [
+                {
+                    "code": "human_review_required",
+                    "category": "culture",
+                    "severity": "warning",
+                    "message": "A hypothesis remains pending review.",
+                    "requires_human_review": True,
+                }
+            ],
             "warnings": ["human_review_required"],
             "brand_lock_preserved": True,
             "requires_human_review": True,
+            "reviewed_at": datetime(2026, 8, 10, tzinfo=UTC),
         },
         "created_at": datetime(2026, 8, 10, tzinfo=UTC),
     }
@@ -646,6 +677,8 @@ def test_registry_schema_contains_every_public_contract() -> None:
         "CreativeBrief",
         "AdCopy",
         "CritiqueReport",
+        "CritiqueIssue",
+        "CritiqueCompleted",
         "ResultVersion",
         "RunCreate",
         "RunCreated",

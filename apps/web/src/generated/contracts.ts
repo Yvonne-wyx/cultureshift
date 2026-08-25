@@ -305,21 +305,48 @@ export type Narrative1 = string;
 export type TrustInformation = string;
 export type UseScenario1 = string;
 export type BrandLockPreserved = boolean;
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CritiqueCategory".
+ */
+export type CritiqueCategory = "brand_lock" | "fact" | "readability" | "culture" | "safety";
+export type Code = string;
+export type Message = string;
 export type RequiresHumanReview = boolean;
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CritiqueSeverity".
+ */
+export type CritiqueSeverity = "warning" | "blocking";
+/**
+ * @maxItems 32
+ */
+export type Issues = CritiqueIssue[];
+export type RequiresHumanReview1 = boolean;
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CritiqueStatus".
+ */
+export type CritiqueStatus = "pass" | "revise" | "needs_human_review" | "reject";
 /**
  * @maxItems 32
  */
 export type Warnings1 = string[];
+export type HumanRevisionCount = number;
+export type InitialGenerationCount = number;
+export type RunId3 = string;
+export type Status3 = "ready" | "failed_final";
+export type TechnicalAttemptCount = number;
 /**
  * @minItems 2
  * @maxItems 2
  */
 export type RuleIds = [string, string];
-export type RunId3 = string;
-export type Status3 = "in_progress";
+export type RunId4 = string;
+export type Status4 = "in_progress";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type ExportResultVersion = number;
-export type RunId4 = string;
+export type RunId5 = string;
 /**
  * @maxItems 32
  */
@@ -379,13 +406,22 @@ export type RequestedChanges =
       string,
       string
     ];
-export type RunId5 = string;
 export type RunId6 = string;
+export type RunId7 = string;
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "RunStatus".
  */
-export type RunStatus = "pending" | "in_progress" | "awaiting_brand_lock" | "blocked" | "completed" | "failed";
+export type RunStatus =
+  | "pending"
+  | "in_progress"
+  | "awaiting_brand_lock"
+  | "blocked"
+  | "completed"
+  | "failed"
+  | "ready"
+  | "failed_retryable"
+  | "failed_final";
 export type CreativeFormat = "static_ad";
 export type FixtureExecutionMode = "fixture";
 export type ProductCategory = "ai_software" | "ai_application";
@@ -394,16 +430,16 @@ export type Version = number;
  * @maxItems 64
  */
 export type ResultVersions = ResultVersion[];
-export type RunId7 = string;
+export type RunId8 = string;
 /**
  * @maxItems 32
  */
 export type WarningCodes = string[];
 export type ReasonCategory = "validation" | "generation" | "review";
-export type RunId8 = string;
-export type CapabilityToken = string;
 export type RunId9 = string;
+export type CapabilityToken = string;
 export type RunId10 = string;
+export type RunId11 = string;
 /**
  * @maxItems 32
  */
@@ -426,6 +462,8 @@ export interface ContractRegistry {
   brand_lock_confirmed: BrandLockConfirmed;
   composition_generated: CompositionGenerated;
   creative_brief: CreativeBrief;
+  critique_completed: CritiqueCompleted;
+  critique_issue: CritiqueIssue;
   critique_report: CritiqueReport;
   cultural_hypothesis: CulturalHypothesis;
   draft_generated: DraftGenerated;
@@ -610,12 +648,39 @@ export interface CreativeBrief {
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CritiqueCompleted".
+ */
+export interface CritiqueCompleted {
+  critique: CritiqueReport;
+  human_revision_count: HumanRevisionCount;
+  initial_generation_count: InitialGenerationCount;
+  reviewed_at: UtcDatetime;
+  run_id: RunId3;
+  status: Status3;
+  technical_attempt_count: TechnicalAttemptCount;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
  * via the `definition` "CritiqueReport".
  */
 export interface CritiqueReport {
   brand_lock_preserved: BrandLockPreserved;
-  requires_human_review?: RequiresHumanReview;
+  issues?: Issues;
+  requires_human_review: RequiresHumanReview1;
+  reviewed_at: UtcDatetime;
+  status: CritiqueStatus;
   warnings?: Warnings1;
+}
+/**
+ * This interface was referenced by `ContractRegistry`'s JSON-Schema
+ * via the `definition` "CritiqueIssue".
+ */
+export interface CritiqueIssue {
+  category: CritiqueCategory;
+  code: Code;
+  message: Message;
+  requires_human_review?: RequiresHumanReview;
+  severity: CritiqueSeverity;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -626,8 +691,8 @@ export interface DraftGenerated {
   copy: AdCopy;
   generated_at: UtcDatetime;
   rule_ids: RuleIds;
-  run_id: RunId3;
-  status: Status3;
+  run_id: RunId4;
+  status: Status4;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -637,7 +702,7 @@ export interface ExportSummary {
   approval_status: ApprovalStatus;
   exported_at: UtcDatetime;
   result_version: ExportResultVersion;
-  run_id: RunId4;
+  run_id: RunId5;
   warnings?: Warnings2;
 }
 /**
@@ -647,7 +712,7 @@ export interface ExportSummary {
 export interface FeedbackRequest {
   feedback: Feedback;
   requested_changes: RequestedChanges;
-  run_id: RunId5;
+  run_id: RunId6;
   submitted_at: UtcDatetime;
 }
 /**
@@ -656,7 +721,7 @@ export interface FeedbackRequest {
  */
 export interface JobAccepted {
   accepted_at: UtcDatetime;
-  run_id: RunId6;
+  run_id: RunId7;
   status: RunStatus;
 }
 /**
@@ -667,7 +732,7 @@ export interface ProjectRunContract {
   created_at: UtcDatetime;
   request: RunCreate;
   result_versions?: ResultVersions;
-  run_id: RunId7;
+  run_id: RunId8;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes;
@@ -703,7 +768,7 @@ export interface ResultVersion {
  */
 export interface RetryRequest {
   reason_category: ReasonCategory;
-  run_id: RunId8;
+  run_id: RunId9;
 }
 /**
  * This interface was referenced by `ContractRegistry`'s JSON-Schema
@@ -712,7 +777,7 @@ export interface RetryRequest {
 export interface RunCreated {
   capability_token: CapabilityToken;
   created_at: UtcDatetime;
-  run_id: RunId9;
+  run_id: RunId10;
   status: RunStatus;
 }
 /**
@@ -722,7 +787,7 @@ export interface RunCreated {
 export interface RunSnapshot {
   created_at: UtcDatetime;
   direction: LocalizationDirection;
-  run_id: RunId10;
+  run_id: RunId11;
   status: RunStatus;
   updated_at: UtcDatetime;
   warning_codes?: WarningCodes1;

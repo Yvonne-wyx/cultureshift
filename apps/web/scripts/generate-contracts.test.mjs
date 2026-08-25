@@ -25,5 +25,7 @@ describe("generated public contract types", () => {
     expect(output).toContain('export type SourceAssetKind = "source_ad";');
     expect(output).toMatch(/kind: SourceAssetKind;/);
     expect(output).toMatch(/export interface AdAnalysis \{[\s\S]*?source_asset: SourceAdAssetRef;/);
+    expect(output).toMatch(/"pass" \| "revise" \| "needs_human_review" \| "reject"/);
+    expect(output).toMatch(/"brand_lock" \| "fact" \| "readability" \| "culture" \| "safety"/);
   });
 });

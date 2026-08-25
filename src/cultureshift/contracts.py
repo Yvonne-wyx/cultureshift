@@ -118,6 +118,9 @@ class RunStatus(StrEnum):
     BLOCKED = "blocked"
     COMPLETED = "completed"
     FAILED = "failed"
+    READY = "ready"
+    FAILED_RETRYABLE = "failed_retryable"
+    FAILED_FINAL = "failed_final"
 
 
 class AssetRef(ContractModel):
@@ -206,15 +209,64 @@ class AdCopy(ContractModel):
     cta_action_meaning: ShortText
 
 
+class CritiqueStatus(StrEnum):
+    PASS = "pass"
+    REVISE = "revise"
+    NEEDS_HUMAN_REVIEW = "needs_human_review"
+    REJECT = "reject"
+
+
+class CritiqueCategory(StrEnum):
+    BRAND_LOCK = "brand_lock"
+    FACT = "fact"
+    READABILITY = "readability"
+    CULTURE = "culture"
+    SAFETY = "safety"
+
+
+class CritiqueSeverity(StrEnum):
+    WARNING = "warning"
+    BLOCKING = "blocking"
+
+
+class CritiqueIssue(ContractModel):
+    code: WarningCode
+    category: CritiqueCategory
+    severity: CritiqueSeverity
+    message: ShortText
+    requires_human_review: bool = False
+
+
 class CritiqueReport(ContractModel):
+    status: CritiqueStatus
+    issues: tuple[CritiqueIssue, ...] = Field(default=(), max_length=32)
     warnings: tuple[WarningCode, ...] = Field(default=(), max_length=32)
     brand_lock_preserved: bool
-    requires_human_review: bool = True
+    requires_human_review: bool
+    reviewed_at: UtcDatetime
 
     @model_validator(mode="after")
-    def fail_closed_on_lock_change(self) -> Self:
-        if not self.brand_lock_preserved and not self.requires_human_review:
-            raise ValueError("Brand Lock changes require human review")
+    def require_consistent_status(self) -> Self:
+        blocking = any(
+            issue.severity is CritiqueSeverity.BLOCKING for issue in self.issues
+        )
+        if not self.brand_lock_preserved and not any(
+            issue.category is CritiqueCategory.BRAND_LOCK
+            and issue.severity is CritiqueSeverity.BLOCKING
+            for issue in self.issues
+        ):
+            raise ValueError("Brand Lock changes require a blocking issue")
+        if blocking != (self.status is CritiqueStatus.REJECT):
+            raise ValueError("blocking issues require reject status")
+        if self.status is CritiqueStatus.PASS and (
+            self.issues or self.requires_human_review
+        ):
+            raise ValueError("pass status requires no issues or human review")
+        if (
+            self.status is CritiqueStatus.NEEDS_HUMAN_REVIEW
+            and not self.requires_human_review
+        ):
+            raise ValueError("human-review status requires human review")
         return self
 
 
@@ -321,6 +373,22 @@ class DraftGenerated(ContractModel):
             raise ValueError("CTA action meaning must preserve Brand Lock")
         if self.rule_ids != rule_ids:
             raise ValueError("draft rule IDs must match direction")
+        return self
+
+
+class CritiqueCompleted(ContractModel):
+    run_id: UUID
+    status: Literal[RunStatus.READY, RunStatus.FAILED_FINAL]
+    critique: CritiqueReport
+    initial_generation_count: int = Field(ge=0, le=1)
+    human_revision_count: int = Field(ge=0, le=1)
+    technical_attempt_count: int = Field(ge=0)
+    reviewed_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def match_review_timestamp(self) -> Self:
+        if self.reviewed_at != self.critique.reviewed_at:
+            raise ValueError("review timestamp must match Critic report")
         return self
 
 
@@ -474,7 +542,9 @@ class ContractRegistry(ContractModel):
     ad_analysis: AdAnalysis
     creative_brief: CreativeBrief
     ad_copy: AdCopy
+    critique_issue: CritiqueIssue
     critique_report: CritiqueReport
+    critique_completed: CritiqueCompleted
     result_version: ResultVersion
     run_create: RunCreate
     run_created: RunCreated

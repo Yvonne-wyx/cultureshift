@@ -607,6 +607,104 @@
       "title": "CreativeBrief",
       "type": "object"
     },
+    "CritiqueCategory": {
+      "enum": [
+        "brand_lock",
+        "fact",
+        "readability",
+        "culture",
+        "safety"
+      ],
+      "title": "CritiqueCategory",
+      "type": "string"
+    },
+    "CritiqueCompleted": {
+      "additionalProperties": false,
+      "properties": {
+        "critique": {
+          "$ref": "#/$defs/CritiqueReport"
+        },
+        "human_revision_count": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Human Revision Count",
+          "type": "integer"
+        },
+        "initial_generation_count": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Initial Generation Count",
+          "type": "integer"
+        },
+        "reviewed_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "failed_final"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "technical_attempt_count": {
+          "minimum": 0,
+          "title": "Technical Attempt Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "critique",
+        "initial_generation_count",
+        "human_revision_count",
+        "technical_attempt_count",
+        "reviewed_at"
+      ],
+      "title": "CritiqueCompleted",
+      "type": "object"
+    },
+    "CritiqueIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/CritiqueCategory"
+        },
+        "code": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "requires_human_review": {
+          "default": false,
+          "title": "Requires Human Review",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/CritiqueSeverity"
+        }
+      },
+      "required": [
+        "code",
+        "category",
+        "severity",
+        "message"
+      ],
+      "title": "CritiqueIssue",
+      "type": "object"
+    },
     "CritiqueReport": {
       "additionalProperties": false,
       "properties": {
@@ -614,10 +712,24 @@
           "title": "Brand Lock Preserved",
           "type": "boolean"
         },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CritiqueIssue"
+          },
+          "maxItems": 32,
+          "title": "Issues",
+          "type": "array"
+        },
         "requires_human_review": {
-          "default": true,
           "title": "Requires Human Review",
           "type": "boolean"
+        },
+        "reviewed_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "status": {
+          "$ref": "#/$defs/CritiqueStatus"
         },
         "warnings": {
           "default": [],
@@ -631,10 +743,31 @@
         }
       },
       "required": [
-        "brand_lock_preserved"
+        "status",
+        "brand_lock_preserved",
+        "requires_human_review",
+        "reviewed_at"
       ],
       "title": "CritiqueReport",
       "type": "object"
+    },
+    "CritiqueSeverity": {
+      "enum": [
+        "warning",
+        "blocking"
+      ],
+      "title": "CritiqueSeverity",
+      "type": "string"
+    },
+    "CritiqueStatus": {
+      "enum": [
+        "pass",
+        "revise",
+        "needs_human_review",
+        "reject"
+      ],
+      "title": "CritiqueStatus",
+      "type": "string"
     },
     "CulturalHypothesis": {
       "additionalProperties": false,
@@ -1141,7 +1274,10 @@
         "awaiting_brand_lock",
         "blocked",
         "completed",
-        "failed"
+        "failed",
+        "ready",
+        "failed_retryable",
+        "failed_final"
       ],
       "title": "RunStatus",
       "type": "string"
@@ -1239,6 +1375,12 @@
     "creative_brief": {
       "$ref": "#/$defs/CreativeBrief"
     },
+    "critique_completed": {
+      "$ref": "#/$defs/CritiqueCompleted"
+    },
+    "critique_issue": {
+      "$ref": "#/$defs/CritiqueIssue"
+    },
     "critique_report": {
       "$ref": "#/$defs/CritiqueReport"
     },
@@ -1284,7 +1426,9 @@
     "ad_analysis",
     "creative_brief",
     "ad_copy",
+    "critique_issue",
     "critique_report",
+    "critique_completed",
     "result_version",
     "run_create",
     "run_created",

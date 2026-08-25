@@ -56,12 +56,14 @@ from cultureshift.contracts import (
     BrandLockConfirmation,
     BrandLockConfirmed,
     CompositionGenerated,
+    CritiqueCompleted,
     DraftGenerated,
     RunCreate,
     RunCreated,
     RunSnapshot,
     RunStatus,
 )
+from cultureshift.critic import Critic, CriticRequest
 from cultureshift.domain import ProjectRun, ProjectRunStatus
 from cultureshift.draft_generation import (
     DraftErrorCode,
@@ -74,6 +76,7 @@ from cultureshift.image_provider import FixtureImageProvider
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import (
     BrandLockImmutableError,
+    CritiqueImmutableError,
     DraftImmutableError,
     InvalidRunStateError,
     ProjectRunNotFoundError,
@@ -108,6 +111,7 @@ def create_app(
     draft_generator: DraftGenerator | None = None,
     composition_service: CompositionService | None = None,
     composition_export_service: CompositionExportService | None = None,
+    critic: Critic | None = None,
 ) -> FastAPI:
     runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
     tokens = token_service or _capability_service_from_environment()
@@ -130,6 +134,7 @@ def create_app(
     composition_exports = composition_export_service or CompositionExportService(
         runs, composition_store
     )
+    reviews = critic or Critic()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -615,6 +620,7 @@ def create_app(
                 run_id,
                 generated.brief,
                 generated.ad_copy,
+                generated.fact_references,
                 generated.rule_ids,
             )
         except (InvalidRunStateError, DraftImmutableError):
@@ -681,6 +687,87 @@ def create_app(
                 status_code=status_code,
                 detail={"code": error.code.value},
             ) from None
+
+    @application.post(
+        "/api/v1/runs/{run_id}/critic",
+        response_model=CritiqueCompleted,
+        tags=["runs"],
+    )
+    async def run_critic(run_id: UUID, request: Request) -> CritiqueCompleted:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or separator != " " or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            )
+        try:
+            claims = tokens.verify(token, required=Capability.UPDATE_PROJECT_RUN)
+        except CapabilityTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "invalid_capability"},
+            ) from None
+        if claims.subject != str(run_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "capability_subject_mismatch"},
+            )
+        if await request.body():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": "critic_body_not_allowed"},
+            )
+        try:
+            run = runs.get(run_id)
+            existing = runs.get_critique(run_id)
+            if existing is not None:
+                report = existing.report
+            else:
+                analysis = runs.get_analysis(run_id)
+                confirmation = runs.get_confirmed_brand_lock(run_id)
+                draft = runs.get_draft(run_id)
+                composition = runs.get_composition(run_id)
+                if any(
+                    value is None
+                    for value in (analysis, confirmation, draft, composition)
+                ):
+                    raise InvalidRunStateError("review prerequisites are incomplete")
+                report = reviews.review(
+                    CriticRequest(
+                        analysis=analysis,
+                        confirmed_brand_lock=confirmation.brand_lock,
+                        draft=draft,
+                        composition=composition,
+                        warning_codes=run.warning_codes,
+                    )
+                )
+                runs.save_critique(run_id, report)
+                run = runs.get(run_id)
+        except ProjectRunNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "run_not_found"},
+            ) from None
+        except (InvalidRunStateError, CritiqueImmutableError):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "invalid_run_state"},
+            ) from None
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "critic_failed"},
+            ) from None
+        return CritiqueCompleted(
+            run_id=run.id,
+            status=RunStatus(run.status.value),
+            critique=report,
+            initial_generation_count=run.initial_generation_count,
+            human_revision_count=run.human_revision_count,
+            technical_attempt_count=run.technical_attempt_count,
+            reviewed_at=report.reviewed_at,
+        )
 
     def require_composition_read_capability(run_id: UUID, request: Request) -> None:
         authorization = request.headers.get("Authorization", "")

@@ -13,11 +13,13 @@ from cultureshift.contracts import (
     CompositionLayer,
     RunCreate,
 )
+from cultureshift.critic import Critic, CriticRequest
 from cultureshift.domain import LocalizationDirection, ProjectRun, ProjectRunStatus
 from cultureshift.draft_generation import DraftGenerator, FixtureCopywriter
 from cultureshift.repository import (
     BrandLockImmutableError,
     CompositionImmutableError,
+    CritiqueImmutableError,
     DraftImmutableError,
     InvalidRunStateError,
     ProjectRunNotFoundError,
@@ -358,17 +360,79 @@ def test_repository_saves_and_replays_one_immutable_composition(
     draft = DraftGenerator(FixtureCopywriter()).generate(
         analysis, analyzed, direction=run.direction
     )
-    repository.save_draft(run.id, draft.brief, draft.ad_copy, draft.rule_ids)
+    repository.save_draft(
+        run.id,
+        draft.brief,
+        draft.ad_copy,
+        draft.fact_references,
+        draft.rule_ids,
+    )
     summary = _composition_summary(run.id, analyzed)
 
     first = repository.save_composition(run.id, summary)
     retry = repository.save_composition(run.id, summary)
     assert retry == first
     assert repository.get_composition(run.id) == first
+    counted = repository.get(run.id)
+    assert counted.initial_generation_count == 1
+    assert counted.human_revision_count == 0
+
+    attempted = repository.increment_technical_attempt(run.id)
+    assert attempted.technical_attempt_count == 1
+    assert attempted.initial_generation_count == 1
+    assert attempted.human_revision_count == 0
 
     changed = summary.model_copy(update={"artifact_id": uuid4()})
     with pytest.raises(CompositionImmutableError):
         repository.save_composition(run.id, changed)
+
+
+def test_repository_atomically_persists_one_critic_result_and_terminal_state(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    confirmation = repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    generated = DraftGenerator(FixtureCopywriter()).generate(
+        analysis, analyzed, direction=run.direction
+    )
+    repository.save_draft(
+        run.id,
+        generated.brief,
+        generated.ad_copy,
+        generated.fact_references,
+        generated.rule_ids,
+    )
+    composition = repository.save_composition(
+        run.id, _composition_summary(run.id, analyzed)
+    )
+    draft = repository.get_draft(run.id)
+    assert draft is not None
+    report = Critic(now=lambda: datetime(2026, 8, 25, 9, 0, tzinfo=UTC)).review(
+        CriticRequest(
+            analysis=analysis,
+            confirmed_brand_lock=confirmation.brand_lock,
+            draft=draft,
+            composition=composition,
+        )
+    )
+
+    first = repository.save_critique(run.id, report)
+    retry = repository.save_critique(run.id, report)
+
+    assert retry == first == repository.get_critique(run.id)
+    reviewed = repository.get(run.id)
+    assert reviewed.status is ProjectRunStatus.READY
+    assert reviewed.initial_generation_count == 1
+    assert reviewed.human_revision_count == 0
+    assert reviewed.technical_attempt_count == 0
+
+    changed = report.model_copy(update={"warnings": ("changed_evidence",)})
+    with pytest.raises(CritiqueImmutableError):
+        repository.save_critique(run.id, changed)
 
 
 def test_repository_saves_and_replays_one_immutable_draft(
@@ -391,6 +455,7 @@ def test_repository_saves_and_replays_one_immutable_draft(
         run.id,
         draft.brief,
         draft.ad_copy,
+        draft.fact_references,
         draft.rule_ids,
         generated_at=generated_at,
     )
@@ -398,11 +463,13 @@ def test_repository_saves_and_replays_one_immutable_draft(
         run.id,
         draft.brief,
         draft.ad_copy,
+        draft.fact_references,
         draft.rule_ids,
         generated_at=generated_at + timedelta(hours=1),
     )
 
     assert first.generated_at == generated_at
+    assert first.fact_references == draft.fact_references
     assert retry == first
     assert repository.get_draft(run.id) == first
     with pytest.raises(DraftImmutableError):
@@ -410,6 +477,7 @@ def test_repository_saves_and_replays_one_immutable_draft(
             run.id,
             draft.brief,
             draft.ad_copy.model_copy(update={"headline": "Changed"}),
+            draft.fact_references,
             draft.rule_ids,
         )
 
@@ -433,6 +501,34 @@ def test_repository_rejects_draft_before_brand_lock_confirmation(
             run.id,
             draft.brief,
             draft.ad_copy,
+            draft.fact_references,
+            draft.rule_ids,
+        )
+
+    assert repository.get_draft(run.id) is None
+
+
+def test_repository_rejects_unsupported_draft_fact_reference(
+    tmp_path, valid_run_payload
+) -> None:
+    repository = SQLiteProjectRunRepository(tmp_path / "runs.sqlite3")
+    repository.initialize()
+    run, analyzed = analyzed_run(repository, valid_run_payload)
+    repository.confirm_brand_lock(run.id, analyzed)
+    analysis = repository.get_analysis(run.id)
+    assert analysis is not None
+    draft = DraftGenerator(FixtureCopywriter()).generate(
+        analysis,
+        analyzed,
+        direction=run.direction,
+    )
+
+    with pytest.raises(InvalidRunStateError, match="fact references"):
+        repository.save_draft(
+            run.id,
+            draft.brief,
+            draft.ad_copy,
+            ("Unsupported performance guarantee",),
             draft.rule_ids,
         )
 

@@ -21,6 +21,9 @@ class ProjectRunStatus(StrEnum):
     BLOCKED = "blocked"
     COMPLETED = "completed"
     FAILED = "failed"
+    READY = "ready"
+    FAILED_RETRYABLE = "failed_retryable"
+    FAILED_FINAL = "failed_final"
 
 
 _ALLOWED_TRANSITIONS: dict[ProjectRunStatus, frozenset[ProjectRunStatus]] = {
@@ -33,6 +36,9 @@ _ALLOWED_TRANSITIONS: dict[ProjectRunStatus, frozenset[ProjectRunStatus]] = {
             ProjectRunStatus.BLOCKED,
             ProjectRunStatus.COMPLETED,
             ProjectRunStatus.FAILED,
+            ProjectRunStatus.READY,
+            ProjectRunStatus.FAILED_RETRYABLE,
+            ProjectRunStatus.FAILED_FINAL,
         }
     ),
     ProjectRunStatus.AWAITING_BRAND_LOCK: frozenset(
@@ -41,6 +47,9 @@ _ALLOWED_TRANSITIONS: dict[ProjectRunStatus, frozenset[ProjectRunStatus]] = {
     ProjectRunStatus.BLOCKED: frozenset({ProjectRunStatus.IN_PROGRESS, ProjectRunStatus.FAILED}),
     ProjectRunStatus.COMPLETED: frozenset(),
     ProjectRunStatus.FAILED: frozenset(),
+    ProjectRunStatus.READY: frozenset({ProjectRunStatus.IN_PROGRESS}),
+    ProjectRunStatus.FAILED_RETRYABLE: frozenset({ProjectRunStatus.IN_PROGRESS}),
+    ProjectRunStatus.FAILED_FINAL: frozenset(),
 }
 
 
@@ -57,6 +66,9 @@ class ProjectRun(BaseModel):
     direction: LocalizationDirection
     status: ProjectRunStatus = ProjectRunStatus.PENDING
     warning_codes: tuple[str, ...] = ()
+    initial_generation_count: int = Field(default=0, ge=0, le=1)
+    human_revision_count: int = Field(default=0, ge=0, le=1)
+    technical_attempt_count: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime | None = None
 
