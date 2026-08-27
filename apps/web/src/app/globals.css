@@ -72,6 +72,16 @@ a {
   color: var(--page-muted);
 }
 
+.fixture-lab__studio-link {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.4rem;
+  color: #fff;
+  background: var(--page-accent);
+  font-weight: 700;
+}
+
 .fixture-lab__previews {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

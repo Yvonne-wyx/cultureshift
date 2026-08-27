@@ -1,0 +1,173 @@
+.shell {
+  width: min(100% - 2rem, 72rem);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 4rem) 0;
+}
+
+.header {
+  max-width: 48rem;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  margin-bottom: 0.75rem;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+}
+
+.header p:last-child {
+  color: var(--page-muted);
+  line-height: 1.6;
+}
+
+.eyebrow {
+  margin-bottom: 0.75rem;
+  color: var(--page-accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel {
+  margin-bottom: 1.5rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid #c3ced8;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 0.75rem 2rem rgb(24 33 43 / 8%);
+}
+
+.status {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border-left: 0.3rem solid var(--page-accent);
+  background: #fff;
+}
+
+.primaryAction {
+  margin: 1rem 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #fff;
+  background: var(--page-accent);
+  font-weight: 700;
+}
+
+.results {
+  display: grid;
+  gap: 1rem;
+}
+
+.results > img {
+  width: 100%;
+  height: auto;
+  border: 1px solid #c3ced8;
+}
+
+.feedback {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.feedback label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.feedback label:has(input) {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.feedback textarea {
+  min-height: 6rem;
+  padding: 0.65rem;
+}
+
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.comparison article {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #c3ced8;
+}
+
+.comparison img {
+  width: 100%;
+  height: auto;
+}
+
+.comparison code,
+.results code {
+  overflow-wrap: anywhere;
+}
+
+.dangerZone {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid #a93b32;
+}
+
+.dangerZone button {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 50rem) {
+  .comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel h2 {
+  margin-bottom: 1rem;
+}
+
+.fields {
+  display: grid;
+  gap: 0.875rem;
+  margin-top: 1rem;
+  border: 0;
+}
+
+.fields label {
+  display: grid;
+  gap: 0.4rem;
+  line-height: 1.4;
+}
+
+.fields label:has(input[type="radio"]),
+.fields label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fields input:not([type="radio"]):not([type="checkbox"]) {
+  width: 100%;
+  padding: 0.65rem;
+  border: 1px solid #8294a5;
+  border-radius: 0.4rem;
+}
+
+.fields button {
+  justify-self: start;
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #fff;
+  background: var(--page-accent);
+  font-weight: 700;
+}
+
+.fields button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

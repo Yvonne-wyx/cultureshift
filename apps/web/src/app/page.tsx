@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { FixturePreview } from "../components/fixture-preview";
 import { listFixtureIds, loadFixture } from "../fixtures/fixture-loader";
 
@@ -13,6 +15,9 @@ export default function Home() {
           Two AI software advertising-localization fixtures for China and UK
           directions. Each proposal remains subject to human review.
         </p>
+        <Link className="fixture-lab__studio-link" href="/studio">
+          Open connected Studio
+        </Link>
       </header>
 
       <section className="fixture-lab__previews" aria-label="Bilateral fixture previews">

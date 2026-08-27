@@ -21,6 +21,9 @@ describe("CultureShift foundation page", () => {
     expect(screen.getByRole("article", { name: /UK to China/ })).toBeInTheDocument();
     expect(screen.getAllByText("Fixture Demo / 非实时模型")).toHaveLength(2);
     expect(screen.getAllByText("Human review required")).toHaveLength(2);
+    expect(
+      screen.getByRole("link", { name: "Open connected Studio" }),
+    ).toHaveAttribute("href", "/studio");
 
     expect(
       container.querySelectorAll(
