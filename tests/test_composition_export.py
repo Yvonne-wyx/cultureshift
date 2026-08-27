@@ -4,6 +4,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -24,9 +25,11 @@ class SummaryRepository:
         self,
         summary: CompositionGenerated | None,
         *,
+        revision: object | None = None,
         run_exists: bool = True,
     ) -> None:
         self._summary = summary
+        self._revision = revision
         self._run_exists = run_exists
 
     def get_composition(self, run_id: UUID) -> CompositionGenerated | None:
@@ -34,10 +37,15 @@ class SummaryRepository:
             raise ProjectRunNotFoundError(str(run_id))
         return self._summary
 
+    def get_revision(self, run_id: UUID) -> object | None:
+        if not self._run_exists:
+            raise ProjectRunNotFoundError(str(run_id))
+        return self._revision
 
-def _png(size: tuple[int, int] = (1600, 900)) -> bytes:
+
+def _png(size: tuple[int, int] = (1600, 900), color: str = "#e8f0f6") -> bytes:
     output = BytesIO()
-    Image.new("RGBA", size, "#e8f0f6").save(output, "PNG", compress_level=9)
+    Image.new("RGBA", size, color).save(output, "PNG", compress_level=9)
     return output.getvalue()
 
 
@@ -99,6 +107,52 @@ def test_export_service_returns_verified_png_and_canonical_json(tmp_path) -> Non
         separators=(",", ":"),
         sort_keys=True,
     ).encode("utf-8") + b"\n"
+
+
+def test_export_service_selects_immutable_version_one_and_two(tmp_path) -> None:
+    run_id = uuid4()
+    initial_bytes = _png()
+    revised_bytes = _png(color="#d9e7dc")
+    initial = _summary(run_id, uuid4(), initial_bytes)
+    revised = _summary(run_id, uuid4(), revised_bytes).model_copy(
+        update={"rendered_sha256": hashlib.sha256(revised_bytes).hexdigest()}
+    )
+    store = CompositionArtifactStore(tmp_path / "compositions")
+    expires_at = datetime.now(UTC) + timedelta(hours=1)
+    store.save(initial.artifact_id, initial_bytes, expires_at=expires_at)
+    store.save(revised.artifact_id, revised_bytes, expires_at=expires_at)
+    service = CompositionExportService(
+        SummaryRepository(initial, revision=SimpleNamespace(composition=revised)),
+        store,
+    )
+
+    assert json.loads(service.export_json(run_id, 1))["artifact_id"] == str(
+        initial.artifact_id
+    )
+    assert json.loads(service.export_json(run_id, 2))["artifact_id"] == str(
+        revised.artifact_id
+    )
+    assert service.export_png(run_id, 1).png_bytes == initial_bytes
+    assert service.export_png(run_id, 2).png_bytes == revised_bytes
+
+
+def test_export_service_rejects_absent_or_unknown_version(tmp_path) -> None:
+    run_id = uuid4()
+    initial_bytes = _png()
+    initial = _summary(run_id, uuid4(), initial_bytes)
+    store = CompositionArtifactStore(tmp_path / "compositions")
+    store.save(
+        initial.artifact_id,
+        initial_bytes,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    service = CompositionExportService(SummaryRepository(initial), store)
+
+    with pytest.raises(CompositionExportError) as missing:
+        service.export_png(run_id, 2)
+    assert missing.value.code is CompositionExportErrorCode.COMPOSITION_UNAVAILABLE
+    with pytest.raises(ValueError, match="unsupported result version"):
+        service.export_json(run_id, 3)
 
 
 def test_export_service_distinguishes_missing_run_and_composition(tmp_path) -> None:

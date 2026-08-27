@@ -90,6 +90,33 @@ def test_health_contracts_and_openapi(tmp_path) -> None:
     assert "BrandLockConfirmed" in openapi["components"]["schemas"]
 
 
+def test_local_studio_cors_is_exact_and_noncredentialed(tmp_path) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        allowed = client.options(
+            "/api/v1/assets",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": (
+                    "content-type,x-provenance-ref,x-rights-ref"
+                ),
+            },
+        )
+        denied = client.options(
+            "/api/v1/assets",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert allowed.headers.get("access-control-allow-credentials") != "true"
+    assert "access-control-allow-origin" not in denied.headers
+
+
 def test_create_run_returns_one_time_token_without_persisting_it(
     tmp_path, valid_run_payload
 ) -> None:
@@ -584,6 +611,86 @@ def test_composition_exports_are_authenticated_integrity_checked_attachments(
     assert hashlib.sha256(png.content).hexdigest() == metadata.json()["rendered_sha256"]
     assert "path" not in metadata.text.casefold()
     assert token not in metadata.text
+
+
+def test_composition_exports_select_persisted_revision_without_breaking_default(
+    tmp_path, valid_run_payload
+) -> None:
+    def revision_service(repository, store):
+        return RevisionService(
+            repository,
+            FixtureRevisionEngine(),
+            FixtureImageProvider(),
+            FixtureAssetRegistry(),
+            PillowCompositor(),
+            store,
+            Path("assets/fonts/NotoSansCJKsc-Regular.otf"),
+            Critic(),
+        )
+
+    client, _ = make_client(tmp_path, revision_service_factory=revision_service)
+    with client:
+        run_id, token = create_ready_fixture_run(client, valid_run_payload)
+        authorization = {"Authorization": f"Bearer {token}"}
+        initial = client.get(
+            f"/api/v1/runs/{run_id}/composition.json", headers=authorization
+        )
+        feedback = client.post(
+            f"/api/v1/runs/{run_id}/feedback",
+            headers={
+                **authorization,
+                "Idempotency-Key": "day16_revision_key",
+            },
+            json={
+                "run_id": run_id,
+                "feedback": "Shorten the headline without changing protected values.",
+                "requested_changes": ["shorten_headline"],
+                "submitted_at": "2026-08-27T09:00:00Z",
+            },
+        )
+        revised_json = client.get(
+            f"/api/v1/runs/{run_id}/composition.json?result_version=2",
+            headers=authorization,
+        )
+        revised_png = client.get(
+            f"/api/v1/runs/{run_id}/composition.png?result_version=2",
+            headers=authorization,
+        )
+
+    assert initial.status_code == feedback.status_code == 200
+    assert revised_json.status_code == 200, revised_json.text
+    assert revised_png.status_code == 200, revised_png.text
+    assert revised_json.json() == feedback.json()["composition"]
+    assert initial.json()["artifact_id"] == feedback.json()["previous_composition"][
+        "artifact_id"
+    ]
+    assert revised_json.json()["artifact_id"] != initial.json()["artifact_id"]
+    assert hashlib.sha256(revised_png.content).hexdigest() == revised_json.json()[
+        "rendered_sha256"
+    ]
+    assert token not in revised_json.text
+
+
+def test_composition_export_rejects_missing_or_unknown_result_version(
+    tmp_path, valid_run_payload
+) -> None:
+    client, _ = make_client(tmp_path)
+    with client:
+        run_id, token = create_ready_fixture_run(client, valid_run_payload)
+        authorization = {"Authorization": f"Bearer {token}"}
+        missing = client.get(
+            f"/api/v1/runs/{run_id}/composition.json?result_version=2",
+            headers=authorization,
+        )
+        unknown = client.get(
+            f"/api/v1/runs/{run_id}/composition.json?result_version=3",
+            headers=authorization,
+        )
+
+    assert missing.status_code == 409, missing.text
+    assert missing.json() == {"detail": {"code": "composition_unavailable"}}
+    assert unknown.status_code == 422
+    assert token not in unknown.text
 
 
 @pytest.mark.parametrize("suffix", ["composition.png", "composition.json"])

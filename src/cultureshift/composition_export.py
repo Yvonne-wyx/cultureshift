@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 from io import BytesIO
+from typing import Literal
 from uuid import UUID
 
 from PIL import Image, UnidentifiedImageError
@@ -35,6 +36,9 @@ class ExportedComposition:
     size_bytes: int
 
 
+ResultVersionNumber = Literal[1, 2]
+
+
 class CompositionExportService:
     def __init__(
         self,
@@ -44,9 +48,17 @@ class CompositionExportService:
         self._repository = repository
         self._artifact_store = artifact_store
 
-    def _summary(self, run_id: UUID) -> CompositionGenerated:
+    def _summary(
+        self, run_id: UUID, result_version: ResultVersionNumber
+    ) -> CompositionGenerated:
         try:
-            summary = self._repository.get_composition(run_id)
+            if result_version == 1:
+                summary = self._repository.get_composition(run_id)
+            elif result_version == 2:
+                revision = self._repository.get_revision(run_id)
+                summary = None if revision is None else revision.composition
+            else:
+                raise ValueError("unsupported result version")
         except ProjectRunNotFoundError:
             raise CompositionExportError(CompositionExportErrorCode.RUN_NOT_FOUND) from None
         if summary is None:
@@ -55,8 +67,10 @@ class CompositionExportService:
             )
         return summary
 
-    def export_png(self, run_id: UUID) -> ExportedComposition:
-        summary = self._summary(run_id)
+    def export_png(
+        self, run_id: UUID, result_version: ResultVersionNumber = 1
+    ) -> ExportedComposition:
+        summary = self._summary(run_id, result_version)
         try:
             loaded = self._artifact_store.load(summary.artifact_id)
             if (
@@ -79,8 +93,8 @@ class CompositionExportService:
             size_bytes=loaded.record.size_bytes,
         )
 
-    def export_json(self, run_id: UUID) -> bytes:
-        summary = self._summary(run_id)
+    def export_json(self, run_id: UUID, result_version: ResultVersionNumber = 1) -> bytes:
+        summary = self._summary(run_id, result_version)
         return (
             json.dumps(
                 summary.model_dump(mode="json"),

@@ -5,11 +5,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from starlette.middleware.cors import CORSMiddleware
 
 from cultureshift.analysis_pipeline import (
     AnalysisErrorCode,
@@ -92,6 +94,23 @@ from cultureshift.revision_service import (
     RevisionServiceErrorCode,
 )
 
+DEFAULT_STUDIO_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+)
+
+
+def _cors_origins_from_environment() -> tuple[str, ...]:
+    configured = os.environ.get("CULTURESHIFT_STUDIO_ORIGINS", "")
+    origins = tuple(value.strip() for value in configured.split(",") if value.strip())
+    selected = tuple(dict.fromkeys(origins or DEFAULT_STUDIO_ORIGINS))
+    if any(
+        origin == "*" or not origin.startswith(("http://", "https://"))
+        for origin in selected
+    ):
+        raise RuntimeError("CULTURESHIFT_STUDIO_ORIGINS must contain exact origins")
+    return selected
+
 
 def _capability_service_from_environment() -> CapabilityTokenService:
     configured = os.environ.get("CULTURESHIFT_CAPABILITY_SECRET")
@@ -166,6 +185,19 @@ def create_app(
         yield
 
     application = FastAPI(title="CultureShift API", version="0.1.0", lifespan=lifespan)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(_cors_origins_from_environment()),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Provenance-Ref",
+            "X-Rights-Ref",
+        ],
+    )
 
     @application.exception_handler(RequestValidationError)
     async def safe_validation_error(_: Request, error: RequestValidationError) -> JSONResponse:
@@ -908,10 +940,12 @@ def create_app(
         return HTTPException(status_code=status_code, detail={"code": error.code.value})
 
     @application.get("/api/v1/runs/{run_id}/composition.png", tags=["runs"])
-    def export_composition_png(run_id: UUID, request: Request) -> Response:
+    def export_composition_png(
+        run_id: UUID, request: Request, result_version: Literal["1", "2"] = "1"
+    ) -> Response:
         require_composition_read_capability(run_id, request)
         try:
-            exported = composition_exports.export_png(run_id)
+            exported = composition_exports.export_png(run_id, int(result_version))
         except CompositionExportError as error:
             raise export_failure(error) from None
         return Response(
@@ -926,10 +960,12 @@ def create_app(
         )
 
     @application.get("/api/v1/runs/{run_id}/composition.json", tags=["runs"])
-    def export_composition_json(run_id: UUID, request: Request) -> Response:
+    def export_composition_json(
+        run_id: UUID, request: Request, result_version: Literal["1", "2"] = "1"
+    ) -> Response:
         require_composition_read_capability(run_id, request)
         try:
-            encoded = composition_exports.export_json(run_id)
+            encoded = composition_exports.export_json(run_id, int(result_version))
         except CompositionExportError as error:
             raise export_failure(error) from None
         return Response(
