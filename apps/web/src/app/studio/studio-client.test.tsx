@@ -12,7 +12,7 @@ import type {
   RunCreated,
 } from "../../generated/contracts";
 import { loadFixture } from "../../fixtures/fixture-loader";
-import type { StudioApiClient } from "../../studio/studio-api";
+import { StudioApiError, type StudioApiClient } from "../../studio/studio-api";
 
 import { StudioClient } from "./studio-client";
 
@@ -233,6 +233,16 @@ describe("StudioClient", () => {
     expect(
       screen.getByRole("heading", { name: fixture.draft.copy.headline }),
     ).toBeVisible();
+    expect(
+      screen.getByText(fixture.preview.hypotheses[0].evidence_refs[0]),
+    ).toBeVisible();
+    expect(screen.getByText(fixture.preview.warnings[0])).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Export version 1 PNG" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Export version 1 JSON" }),
+    ).toBeVisible();
     await waitFor(() =>
       expect(api.exportComposition).toHaveBeenCalledWith(
         run.run_id,
@@ -306,6 +316,40 @@ describe("StudioClient", () => {
     expect(await screen.findByText("Current phase: final failure")).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Version 1" })).not.toBeInTheDocument();
     expect(api.exportComposition).not.toHaveBeenCalled();
+  });
+
+  it("offers one bounded retry only after a retryable revision failure", async () => {
+    const api = happyApi();
+    vi.mocked(api.submitFeedback).mockRejectedValue(
+      new StudioApiError(503, "revision_failed"),
+    );
+    vi.mocked(api.retryRevision).mockResolvedValue(revision);
+    render(<StudioClient api={api} />);
+    await reachReadyVersionOne();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Shorten headline" }));
+    fireEvent.change(screen.getByLabelText("Feedback context"), {
+      target: { value: "Hard to scan." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create version 2" }));
+
+    const retry = await screen.findByRole("button", { name: "Retry version 2" });
+    fireEvent.click(retry);
+
+    expect(
+      await screen.findByRole("heading", { name: "Compare versions" }),
+    ).toBeVisible();
+    expect(api.retryRevision).toHaveBeenCalledWith(
+      run.run_id,
+      run.capability_token,
+      { run_id: run.run_id, reason_category: "generation" },
+      expect.any(String),
+    );
+    expect(api.exportComposition).toHaveBeenCalledWith(
+      run.run_id,
+      run.capability_token,
+      2,
+      "png",
+    );
   });
 
   it("creates only version two, exports it, and deletes the exact source", async () => {

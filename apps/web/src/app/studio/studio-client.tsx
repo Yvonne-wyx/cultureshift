@@ -180,6 +180,13 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
         retryKey.current,
       );
       dispatch({ type: "revision_succeeded", result });
+      const blob = await api.exportComposition(
+        state.run.run_id,
+        state.run.capability_token,
+        2,
+        "png",
+      );
+      setVersionTwoUrl(makeObjectUrl(blob));
     } catch (error) {
       fail(error);
     }
@@ -353,6 +360,22 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
             <h2>Analysis evidence</h2>
             <p>Detected locale: {state.analysis.analysis.detected_locale}</p>
             <p>Pending hypotheses remain subject to human review.</p>
+            <h3>Warnings</h3>
+            <ul>
+              {(state.analysis.analysis.warnings ?? []).map((warning) => (
+                <li key={warning}><code>{warning}</code></li>
+              ))}
+            </ul>
+            <h3>Evidence references</h3>
+            <ul>
+              {(state.analysis.analysis.hypotheses ?? []).flatMap((hypothesis) =>
+                hypothesis.evidence_refs.map((reference) => (
+                  <li key={`${hypothesis.hypothesis_id}-${reference}`}>
+                    <code>{reference}</code>
+                  </li>
+                )),
+              )}
+            </ul>
           </section>
           <BrandLockForm
             initialBrandLock={state.analysis.analysis.brand_lock}
@@ -405,6 +428,10 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
             <div><dt>Critic</dt><dd>{state.critique.critique.status}</dd></div>
             <div><dt>Output SHA-256</dt><dd><code>{state.composition.rendered_sha256}</code></dd></div>
           </dl>
+          <div className={styles.actions}>
+            <button type="button" onClick={() => downloadVersion(1, "png")}>Export version 1 PNG</button>
+            <button type="button" onClick={() => downloadVersion(1, "json")}>Export version 1 JSON</button>
+          </div>
           <fieldset className={styles.feedback}>
             <legend>One structured revision</legend>
             <label><input type="checkbox" checked={shortenHeadline} onChange={(event) => setShortenHeadline(event.target.checked)} /> Shorten headline</label>
@@ -432,6 +459,7 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
             <article><h3>Version 2</h3><code>{state.revision.composition.rendered_sha256}</code>{versionTwoUrl ? <img src={versionTwoUrl} alt="Version 2 composition" /> : null}</article>
           </div>
           <p>Human revision count: {state.revision.human_revision_count}</p>
+          <p>Critic: {state.revision.critique.status}; human review required.</p>
           <button type="button" onClick={() => downloadVersion(1, "png")}>Export version 1 PNG</button>
           <button type="button" onClick={() => downloadVersion(1, "json")}>Export version 1 JSON</button>
           <button type="button" onClick={() => downloadVersion(2, "png")}>Export version 2 PNG</button>
