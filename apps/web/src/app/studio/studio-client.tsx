@@ -384,13 +384,18 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
             productUiAssetPath={fixture.preview.product_ui_asset_path}
             layoutPreview={fixture.preview.localized_copy}
             confirmBrandLock={async (brandLock) => {
-              const confirmed = await api.confirmBrandLock(
-                state.run!.run_id,
-                state.run!.capability_token,
-                brandLock,
-              );
-              dispatch({ type: "brand_lock_confirmed", result: confirmed });
-              return confirmed;
+              try {
+                const confirmed = await api.confirmBrandLock(
+                  state.run!.run_id,
+                  state.run!.capability_token,
+                  brandLock,
+                );
+                dispatch({ type: "brand_lock_confirmed", result: confirmed });
+                return confirmed;
+              } catch (error) {
+                fail(error);
+                throw error;
+              }
             }}
           />
         </>

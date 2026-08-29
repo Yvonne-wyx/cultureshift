@@ -15,6 +15,10 @@ __pycache__/
 
 # JavaScript dependencies and caches
 node_modules/
+.next/
+playwright-report/
+test-results/
+.playwright/
 .npm/
 .yarn/
 .pnpm-store/

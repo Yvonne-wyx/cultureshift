@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "node e2e/run-e2e.mjs",
+    "test:e2e:direct": "playwright test",
     "typecheck": "tsc --noEmit",
     "contracts:generate": "node scripts/generate-contracts.mjs",
     "contracts:check": "node scripts/generate-contracts.mjs --check"
