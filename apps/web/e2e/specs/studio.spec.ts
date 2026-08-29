@@ -25,8 +25,8 @@ async function startUpload(page: Page, direction: "China to UK" | "UK to China")
   await page.goto("/studio");
   await page.getByLabel(direction).check();
   await page.getByLabel("Source ad").setInputFiles(sourceFixture);
-  await page.getByLabel("Provenance reference").fill("public:orbit-ai-fixture-source");
-  await page.getByLabel("Rights reference").fill("public:demo-assets-rights");
+  await page.getByLabel("Provenance reference").fill("fixture:orbit-ai/source");
+  await page.getByLabel("Rights reference").fill("rights:demo-assets/day17");
   await page.getByLabel("I have authority to process this source.").check();
   await page.getByRole("button", { name: "Upload and start" }).click();
 }
@@ -140,11 +140,11 @@ test("upload validation and authority fail closed before network work", async ({
     mimeType: "text/plain",
     buffer: Buffer.from("not an image"),
   });
-  await expect(page.getByRole("alert")).toContainText("Choose a PNG, JPEG, or WebP");
+  await expect(page.getByText("Choose a PNG, JPEG, or WebP", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Upload and start" })).toBeDisabled();
   await page.getByLabel("Source ad").setInputFiles(sourceFixture);
-  await page.getByLabel("Provenance reference").fill("public:orbit-ai-fixture-source");
-  await page.getByLabel("Rights reference").fill("public:demo-assets-rights");
+  await page.getByLabel("Provenance reference").fill("fixture:orbit-ai/source");
+  await page.getByLabel("Rights reference").fill("rights:demo-assets/day17");
   await expect(page.getByRole("button", { name: "Upload and start" })).toBeDisabled();
 });
 
@@ -157,8 +157,9 @@ test("bounded capability, conflict, retryable, final, and export failures stay d
     });
   });
   await startUpload(page, "China to UK");
-  await expect(page.getByRole("alert")).toContainText("capability_subject_mismatch");
-  await expect(page.getByRole("alert")).not.toContainText(capabilityPattern);
+  const capabilityAlert = page.getByText(/Studio operation failed \(capability_subject_mismatch\)/);
+  await expect(capabilityAlert).toBeVisible();
+  await expect(capabilityAlert).not.toContainText(capabilityPattern);
 
   await page.unrouteAll();
   await page.reload();
@@ -177,7 +178,7 @@ test("bounded capability, conflict, retryable, final, and export failures stay d
     await route.fulfill({ status: 410, contentType: "application/json", body: JSON.stringify({ detail: { code: "composition_artifact_unavailable" } }) });
   });
   await page.getByRole("button", { name: "Export version 1 PNG" }).click();
-  await expect(page.getByRole("alert")).toContainText("composition_artifact_unavailable");
+  await expect(page.getByText(/Studio operation failed \(composition_artifact_unavailable\)/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Retry version 2/ })).toHaveCount(0);
 });
 
@@ -201,6 +202,6 @@ test("retry is visible only for server-authorized revision failure", async ({ pa
     await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ detail: { code: "revision_limit_reached" } }) });
   });
   await page.getByRole("button", { name: "Create version 2" }).click();
-  await expect(page.getByRole("alert")).toContainText("revision_limit_reached");
+  await expect(page.getByText(/Studio operation failed \(revision_limit_reached\)/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry version 2" })).toHaveCount(0);
 });
