@@ -146,8 +146,9 @@ async function reachReadyVersionOne() {
   selectAuthorizedPng();
   fireEvent.click(screen.getByRole("button", { name: "Upload and start" }));
   await screen.findByRole("heading", { name: "Confirm Brand Lock" });
+  fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
-  await screen.findByText("Brand Lock confirmed and immutable.");
+  await screen.findByText(/Brand Lock confirmed and immutable/);
   fireEvent.click(screen.getByRole("button", { name: "Generate fixture proposal" }));
   await screen.findByRole("heading", { name: "Version 1" });
 }
@@ -183,6 +184,17 @@ describe("StudioClient", () => {
     expect(screen.getByRole("button", { name: "Upload and start" })).toBeEnabled();
   });
 
+  it("orients a first-time user and exposes a non-navigable accessible progress list", () => {
+    render(<StudioClient api={fakeApi()} />);
+    expect(screen.getByText(/This is a fixture demonstration/i)).toBeVisible();
+    expect(screen.getByText(/no live AI provider/i)).toBeVisible();
+    expect(screen.getByText(/hypotheses requiring human review/i)).toBeVisible();
+    const progress = screen.getByRole("list", { name: "Studio progress" });
+    expect(progress).toHaveTextContent("Configure direction");
+    expect(progress).toHaveTextContent("Export or delete");
+    expect(progress.querySelector('[aria-current="step"]')).not.toBeNull();
+  });
+
   it("rejects unsupported or oversized files without exposing their names", () => {
     render(<StudioClient api={fakeApi()} />);
 
@@ -213,9 +225,10 @@ describe("StudioClient", () => {
     });
     expect(api.analyzeRun).toHaveBeenCalledWith(run.run_id, run.capability_token);
 
+    fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
     expect(
-      await screen.findByText("Brand Lock confirmed and immutable."),
+      await screen.findByText(/Brand Lock confirmed and immutable/),
     ).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Generate fixture proposal" }),
@@ -309,8 +322,9 @@ describe("StudioClient", () => {
     selectAuthorizedPng();
     fireEvent.click(screen.getByRole("button", { name: "Upload and start" }));
     await screen.findByRole("heading", { name: "Confirm Brand Lock" });
+    fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
-    await screen.findByText("Brand Lock confirmed and immutable.");
+    await screen.findByText(/Brand Lock confirmed and immutable/);
     fireEvent.click(screen.getByRole("button", { name: "Generate fixture proposal" }));
 
     expect(await screen.findByText("Current phase: final failure")).toBeVisible();
@@ -383,9 +397,14 @@ describe("StudioClient", () => {
       ),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Delete uploaded source and reset" }),
+    fireEvent.click(screen.getByRole("button", { name: "Review source deletion" }));
+    expect(screen.getByRole("group", { name: "Confirm source deletion" })).toHaveTextContent(
+      "downloaded to your device",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel deletion" }));
+    expect(api.deleteAsset).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Review source deletion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete source and reset" }));
     await waitFor(() =>
       expect(api.deleteAsset).toHaveBeenCalledWith(
         uploaded.asset.asset_id,

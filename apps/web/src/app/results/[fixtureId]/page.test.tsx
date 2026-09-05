@@ -25,7 +25,8 @@ describe("fixture result page", () => {
       expect(screen.getByText("awaiting_brand_lock")).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Confirm Brand Lock" }),
-      ).toBeEnabled();
+      ).toBeDisabled();
+      expect(screen.getByRole("checkbox", { name: /become immutable/i })).not.toBeChecked();
       expect(screen.getByText("Fixture confirmation only")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Traceability" })).toBeInTheDocument();
       expect(

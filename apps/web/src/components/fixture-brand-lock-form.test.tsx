@@ -12,8 +12,9 @@ describe("FixtureBrandLockForm", () => {
       render(<FixtureBrandLockForm fixture={loadFixture(fixtureId)} />);
 
       expect(screen.getByText("Fixture confirmation only")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
       fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
-      expect(await screen.findByText("Brand Lock confirmed and immutable.")).toBeInTheDocument();
+      expect(await screen.findByText(/Brand Lock confirmed and immutable/)).toBeInTheDocument();
       expect(screen.getByText("in_progress")).toBeInTheDocument();
     },
   );

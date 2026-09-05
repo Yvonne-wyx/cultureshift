@@ -43,6 +43,8 @@ jobs:
       - run: python scripts/export_contracts.py --check
       - run: npm --prefix apps/web run contracts:check
       - run: npm --prefix apps/web test
+      - run: npm --prefix apps/web run demo:test
+      - run: npm --prefix apps/web run demo -- --check
       - run: npm --prefix apps/web run typecheck
       - run: npm --prefix apps/web audit --audit-level=high
       - run: npm --prefix apps/web run build

@@ -50,7 +50,9 @@ describe("BrandLockForm", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(container.querySelector('input[type="file"]')).toBeNull();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(5);
+    expect(screen.getByRole("checkbox", { name: /become immutable/i })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Confirm Brand Lock" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Move Organize up" })).toBeEnabled();
   });
 
@@ -65,6 +67,7 @@ describe("BrandLockForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Move Organize up" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "language" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
 
     await waitFor(() => expect(confirmation).toHaveBeenCalledTimes(1));
@@ -73,7 +76,7 @@ describe("BrandLockForm", () => {
       benefit_order: ["Organize", "Summarize"],
       localizable_fields: ["narrative", "use_scenario", "trust_information"],
     });
-    expect(await screen.findByText("Brand Lock confirmed and immutable.")).toBeInTheDocument();
+    expect(await screen.findByText(/Brand Lock confirmed and immutable/)).toBeInTheDocument();
     expect(screen.getByText("in_progress")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm Brand Lock" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "narrative" })).toBeDisabled();
@@ -82,10 +85,11 @@ describe("BrandLockForm", () => {
   it("disables empty confirmation and sanitizes an unexpected failure", async () => {
     const confirmation = vi.fn().mockRejectedValue(new Error("private marker"));
     renderForm(confirmation);
-    for (const checkbox of screen.getAllByRole("checkbox")) fireEvent.click(checkbox);
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^(narrative|use_scenario|trust_information|language)$/ })) fireEvent.click(checkbox);
     expect(screen.getByRole("button", { name: "Confirm Brand Lock" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "narrative" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Unable to confirm Brand Lock.",
@@ -97,6 +101,7 @@ describe("BrandLockForm", () => {
     const confirmation = vi.fn(() => new Promise<BrandLockConfirmed>(() => undefined));
     renderForm(confirmation);
 
+    fireEvent.click(screen.getByRole("checkbox", { name: /become immutable/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm Brand Lock" }));
 
     expect(screen.getByRole("button", { name: "Confirming…" })).toBeDisabled();

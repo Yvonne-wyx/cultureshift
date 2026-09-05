@@ -25,6 +25,16 @@ const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const INVALID_FILE_MESSAGE =
   "Choose a PNG, JPEG, or WebP source no larger than 10 MiB.";
+const STAGES = [
+  "Configure direction",
+  "Authorize and upload source",
+  "Analyze source",
+  "Review Brand Lock",
+  "Generate localized proposal",
+  "Review Critic outcome",
+  "Compare versions",
+  "Export or delete",
+] as const;
 
 export interface StudioClientProps {
   api?: StudioApiClient;
@@ -48,6 +58,13 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
   const [shortenHeadline, setShortenHeadline] = useState(false);
   const [shortenBody, setShortenBody] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [revisionChanges, setRevisionChanges] = useState<RevisionChange[]>([]);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const deleteReviewRef = useRef<HTMLButtonElement>(null);
+  const brandLockHeadingRef = useRef<HTMLHeadingElement>(null);
+  const versionOneHeadingRef = useRef<HTMLHeadingElement>(null);
+  const comparisonHeadingRef = useRef<HTMLHeadingElement>(null);
   const feedbackKey = useRef<string | undefined>(undefined);
   const retryKey = useRef<string | undefined>(undefined);
   const revisionRequest = useRef<FeedbackRequest | undefined>(undefined);
@@ -62,6 +79,16 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
   useEffect(() => () => {
     if (versionTwoUrl) URL.revokeObjectURL(versionTwoUrl);
   }, [versionTwoUrl]);
+
+  useEffect(() => {
+    if (operationError) errorSummaryRef.current?.focus();
+  }, [operationError]);
+
+  useEffect(() => {
+    if (state.phase === "awaiting_brand_lock") brandLockHeadingRef.current?.focus();
+    if (state.phase === "ready_v1") versionOneHeadingRef.current?.focus();
+    if (state.phase === "ready_v2") comparisonHeadingRef.current?.focus();
+  }, [state.phase]);
 
   function fail(error: unknown) {
     const code = error instanceof StudioApiError ? error.code : "service_unavailable";
@@ -146,6 +173,7 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
     };
     feedbackKey.current ??= crypto.randomUUID();
     revisionRequest.current = request;
+    setRevisionChanges(requestedChanges);
     dispatch({ type: "revision_started" });
     setOperationError(undefined);
     try {
@@ -235,6 +263,8 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
       setShortenHeadline(false);
       setShortenBody(false);
       setFeedback("");
+      setRevisionChanges([]);
+      setConfirmingDelete(false);
       feedbackKey.current = undefined;
       retryKey.current = undefined;
       revisionRequest.current = undefined;
@@ -253,17 +283,59 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
     provenanceRef.trim() !== "" &&
     rightsRef.trim() !== "" &&
     hasAuthority;
+  const currentStage =
+    state.phase === "configure"
+      ? 0
+      : state.phase === "uploading"
+        ? 1
+        : state.phase === "analyzing"
+          ? 2
+          : state.phase === "awaiting_brand_lock"
+            ? 3
+            : ["generating_draft", "composing"].includes(state.phase)
+              ? 4
+              : state.phase === "reviewing" || state.phase === "ready_v1"
+                ? 5
+                : state.phase === "ready_v2"
+                  ? 6
+                  : 7;
+  const isBusy = [
+    "uploading",
+    "analyzing",
+    "generating_draft",
+    "composing",
+    "reviewing",
+    "submitting_revision",
+    "deleting",
+  ].includes(state.phase);
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} aria-busy={isBusy}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>Day 16 · fixture-only integration</p>
+        <p className={styles.eyebrow}>Day 18 · accessible fixture demonstration</p>
         <h1>Connected fixture Studio</h1>
         <p>
-          Run one authorized source through the existing deterministic workflow.
-          Nothing is published automatically.
+          CultureShift demonstrates how an authorized static ad can be localized between China and the UK while verified brand elements remain protected.
         </p>
+        <ul className={styles.boundaries}>
+          <li>This is a fixture demonstration with no live AI provider.</li><li>Only China to UK and UK to China are supported.</li><li>Brand Lock protects verified brand elements from later changes.</li><li>Cultural recommendations are hypotheses requiring human review, not cultural approval.</li><li>You can compare the source, immutable Version 1, and at most one structured Version 2.</li>
+        </ul>
       </header>
+      <section className={styles.progress} aria-labelledby="studio-progress-heading">
+        <h2 id="studio-progress-heading">Studio progress</h2>
+        <ol aria-label="Studio progress">
+          {STAGES.map((stage, index) => (
+            <li
+              key={stage}
+              data-state={index < currentStage ? "completed" : index === currentStage ? "current" : "unavailable"}
+              aria-current={index === currentStage ? "step" : undefined}
+            >
+              <span aria-hidden="true">{index + 1}</span>
+              {stage}
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <section className={styles.panel} aria-labelledby="configure-studio">
         <h2 id="configure-studio">Configure a fixture run</h2>
@@ -297,6 +369,8 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
           <label>
             Source ad
             <input
+              id="source-ad"
+              aria-describedby={fileError ? "source-file-error" : undefined}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={(event) => {
@@ -317,7 +391,11 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
               }}
             />
           </label>
-          {fileError ? <p role="alert">{fileError}</p> : null}
+          {fileError ? (
+            <p id="source-file-error" role="alert">
+              <a href="#source-ad">Source ad:</a> {fileError}
+            </p>
+          ) : null}
           <label>
             Provenance reference
             <input
@@ -347,17 +425,23 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
       </section>
 
       {state.phase !== "configure" ? (
-        <p className={styles.status} role="status">
+        <p className={styles.status} role="status" aria-live="polite">
           Current phase: {state.phase.replaceAll("_", " ")}
         </p>
       ) : null}
-      {operationError ? <p role="alert">{operationError}</p> : null}
+      {operationError ? (
+        <div ref={errorSummaryRef} className={styles.errorSummary} role="alert" tabIndex={-1}>
+          <h2>Action needs attention</h2>
+          <p>{operationError}</p>
+          <p>Retry only when the page offers a retry button; otherwise delete the source and begin a clean fixture run.</p>
+        </div>
+      ) : null}
       {completionMessage ? <p role="status">{completionMessage}</p> : null}
 
       {state.analysis && state.run ? (
         <>
           <section className={styles.panel} aria-label="Analysis evidence">
-            <h2>Analysis evidence</h2>
+            <h2 ref={brandLockHeadingRef} tabIndex={-1}>Analysis evidence</h2>
             <p>Detected locale: {state.analysis.analysis.detected_locale}</p>
             <p>Pending hypotheses remain subject to human review.</p>
             <h3>Warnings</h3>
@@ -409,7 +493,7 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
 
       {state.phase === "ready_v1" && state.draft && state.composition && state.critique ? (
         <section className={styles.results} aria-labelledby="version-one-heading">
-          <h2 id="version-one-heading">Version 1</h2>
+          <h2 ref={versionOneHeadingRef} id="version-one-heading" tabIndex={-1}>Version 1</h2>
           {sourceUrl ? (
             <img src={sourceUrl} alt="Authorized source ad preview" />
           ) : null}
@@ -439,6 +523,7 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
           </div>
           <fieldset className={styles.feedback}>
             <legend>One structured revision</legend>
+            <p>This creates the only allowed visible revision. A technical retry repeats a failed operation and does not create another creative version.</p>
             <label><input type="checkbox" checked={shortenHeadline} onChange={(event) => setShortenHeadline(event.target.checked)} /> Shorten headline</label>
             <label><input type="checkbox" checked={shortenBody} onChange={(event) => setShortenBody(event.target.checked)} /> Shorten body</label>
             <label>
@@ -458,13 +543,17 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
 
       {state.phase === "ready_v2" && state.revision ? (
         <section className={styles.results} aria-labelledby="compare-heading">
-          <h2 id="compare-heading">Compare versions</h2>
+          <h2 ref={comparisonHeadingRef} id="compare-heading" tabIndex={-1}>Compare versions</h2>
+          {sourceUrl ? <article className={styles.sourceComparison}><h3>Authorized source</h3><img src={sourceUrl} alt="Authorized source ad in comparison" /></article> : null}
           <div className={styles.comparison}>
             <article><h3>Version 1</h3><code>{state.revision.previous_composition.rendered_sha256}</code>{versionOneUrl ? <img src={versionOneUrl} alt="Version 1 composition" /> : null}</article>
             <article><h3>Version 2</h3><code>{state.revision.composition.rendered_sha256}</code>{versionTwoUrl ? <img src={versionTwoUrl} alt="Version 2 composition" /> : null}</article>
           </div>
+          <p>Requested structured revision: {revisionChanges.join(", ") || "approved shortening"}.</p>
+          <p>Protected logo, product UI, verified facts, CTA meaning and layout remain unchanged.</p>
           <p>Human revision count: {state.revision.human_revision_count}</p>
-          <p>Critic: {state.revision.critique.status}; human review required.</p>
+          <p>Automated Critic status: {state.revision.critique.status}. This is not human, cultural, legal or production approval; human review remains required.</p>
+          <details><summary>Secondary evidence</summary><p>Version 1 output hash: <code>{state.revision.previous_composition.rendered_sha256}</code></p><p>Version 2 output hash: <code>{state.revision.composition.rendered_sha256}</code></p><p>Rule IDs: {state.draft?.rule_ids.join(", ")}</p></details>
           <button type="button" onClick={() => downloadVersion(1, "png")}>Export version 1 PNG</button>
           <button type="button" onClick={() => downloadVersion(1, "json")}>Export version 1 JSON</button>
           <button type="button" onClick={() => downloadVersion(2, "png")}>Export version 2 PNG</button>
@@ -475,8 +564,20 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
       {canRetry(state) ? <button type="button" onClick={retryVersionTwo}>Retry version 2</button> : null}
       {canDelete(state) ? (
         <section className={styles.dangerZone}>
-          <p>This deletes only the uploaded source asset, not Run metadata or generated records.</p>
-          <button type="button" onClick={deleteSource}>Delete uploaded source and reset</button>
+          <h2>Delete source and reset session</h2>
+          <p>This deletes the exact uploaded source asset and clears this in-memory Studio session. It does not claim to delete unrelated records, external copies, or exports already downloaded to your device.</p>
+          {!confirmingDelete ? (
+            <button ref={deleteReviewRef} type="button" onClick={() => setConfirmingDelete(true)}>Review source deletion</button>
+          ) : (
+            <div role="group" aria-label="Confirm source deletion" className={styles.confirmDelete}>
+              <p>Confirm deletion of the uploaded source and reset this session? Exports already downloaded to your device are outside this action.</p>
+              <button type="button" onClick={deleteSource}>Confirm delete source and reset</button>
+              <button type="button" onClick={() => {
+                setConfirmingDelete(false);
+                requestAnimationFrame(() => deleteReviewRef.current?.focus());
+              }}>Cancel deletion</button>
+            </div>
+          )}
         </section>
       ) : null}
     </main>

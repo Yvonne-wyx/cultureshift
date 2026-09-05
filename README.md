@@ -47,3 +47,14 @@ The readiness endpoint is `GET /health`. Run automated checks with:
 python -m pytest
 python -m ruff check .
 ```
+
+## Fixture Studio demo
+
+Day 18 provides a development-only launcher for the deterministic bilateral Studio. It does not connect to a live AI provider and must not be used with production data or configuration.
+
+```powershell
+npm --prefix apps/web run demo -- --check
+npm --prefix apps/web run demo
+```
+
+Use `--backend-port`, `--frontend-port`, or `--root` to select loopback ports or a caller-managed runtime directory. The launcher validates both ports, waits for bounded backend and Studio readiness, terminates only its own child processes, and removes only a temporary root it created. See `docs/demo/day18-three-minute-walkthrough-v1.0.md` for the bounded walkthrough.

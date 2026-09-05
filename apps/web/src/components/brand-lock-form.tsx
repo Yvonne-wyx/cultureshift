@@ -48,6 +48,7 @@ export function BrandLockForm({
   const [localizable, setLocalizable] = useState<string[]>([
     ...initialBrandLock.localizable_fields,
   ]);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [state, setState] = useState<"ready" | "pending" | "confirmed" | "error">(
     "ready",
   );
@@ -75,7 +76,7 @@ export function BrandLockForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (localizable.length === 0 || disabled) return;
+    if (localizable.length === 0 || !acknowledged || disabled) return;
     setState("pending");
     try {
       await confirmBrandLock({
@@ -95,7 +96,7 @@ export function BrandLockForm({
         <div><p className={styles.eyebrow}>Day 10 · confirmation</p><h2 id="confirm-brand-lock-heading">Confirm Brand Lock</h2></div>
         <code>{immutable ? "in_progress" : "awaiting_brand_lock"}</code>
       </div>
-      <p>Locked fields are read-only. Only benefit priority and the approved localizable subset can change before confirmation.</p>
+      <p><strong>Brand Lock</strong> protects the verified logo, product facts, product UI, CTA meaning and layout. Only benefit priority and the approved localizable subset can change before confirmation.</p>
       <p>Cultural hypotheses remain pending human review.</p>
 
       <form onSubmit={submit}>
@@ -117,11 +118,15 @@ export function BrandLockForm({
           {initialBrandLock.localizable_fields.map((field) => <label key={field}><input type="checkbox" checked={localizable.includes(field)} onChange={() => toggleLocalizable(field)} /> <code>{field}</code></label>)}
         </fieldset>
 
-        <button type="submit" disabled={disabled || localizable.length === 0}>
+        <label>
+          <input type="checkbox" checked={acknowledged} disabled={disabled} onChange={(event) => setAcknowledged(event.target.checked)} />
+          I understand that protected Brand Lock fields become immutable after confirmation.
+        </label>
+        <button type="submit" disabled={disabled || localizable.length === 0 || !acknowledged}>
           {state === "pending" ? "Confirming…" : "Confirm Brand Lock"}
         </button>
         {state === "error" ? <p role="alert">Unable to confirm Brand Lock.</p> : null}
-        {immutable ? <p role="status">Brand Lock confirmed and immutable.</p> : null}
+        {immutable ? <p role="status">Brand Lock confirmed and immutable. This is not brand, legal, or cultural approval.</p> : null}
       </form>
       <Image className={styles.productPreview} src={productUiAssetPath} alt={`${directionLabel} product UI asset preview`} width={560} height={315} />
     </section>

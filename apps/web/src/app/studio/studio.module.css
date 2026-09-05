@@ -19,6 +19,86 @@
   line-height: 1.6;
 }
 
+.boundaries {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+  color: var(--page-muted);
+  line-height: 1.5;
+}
+
+.progress {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #c3ced8;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.progress h2 {
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+}
+
+.progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.progress li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--page-muted);
+  font-size: 0.85rem;
+}
+
+.progress li span {
+  display: grid;
+  flex: 0 0 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+}
+
+.progress li[data-state="current"] {
+  color: var(--page-accent);
+  font-weight: 700;
+}
+
+.progress li[data-state="completed"] {
+  color: #276749;
+}
+
+.errorSummary {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 2px solid #a93b32;
+  background: #fff4f2;
+}
+
+.sourceComparison img {
+  width: 100%;
+  height: auto;
+}
+
+.confirmDelete {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.confirmDelete p {
+  flex-basis: 100%;
+}
+
 .eyebrow {
   margin-bottom: 0.75rem;
   color: var(--page-accent);
@@ -129,6 +209,21 @@
 @media (max-width: 50rem) {
   .comparison {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .progress ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .shell *,
+  .shell *::before,
+  .shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
 

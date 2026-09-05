@@ -1,4 +1,5 @@
 import { expect, type Download, type Page, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -38,8 +39,9 @@ async function configure(page: Page, direction: "China to UK" | "UK to China") {
 
 async function reachVersionOne(page: Page, direction: "China to UK" | "UK to China") {
   await configure(page, direction);
+  await page.getByLabel(/become immutable/i).check();
   await page.getByRole("button", { name: "Confirm Brand Lock" }).click();
-  await expect(page.getByText("Brand Lock confirmed and immutable.")).toBeVisible();
+  await expect(page.getByText(/Brand Lock confirmed and immutable/)).toBeVisible();
   await page.getByRole("button", { name: "Generate fixture proposal" }).click();
   await expect(page.getByRole("heading", { name: "Version 1" })).toBeVisible({
     timeout: 30_000,
@@ -91,13 +93,19 @@ async function verifyBrowserTokenBoundary(page: Page) {
   expect(JSON.stringify(cookies)).not.toMatch(capabilityPattern);
 }
 
+async function expectNoSeriousAxeViolations(page: Page) {
+  const result = await new AxeBuilder({ page }).analyze();
+  expect(result.violations.filter(({ impact }) => impact === "serious" || impact === "critical")).toEqual([]);
+}
+
 for (const direction of ["China to UK", "UK to China"] as const) {
   test(`${direction} completes Version 1, exports, deletes, and resets`, async ({ page }) => {
     await reachVersionOne(page, direction);
     await verifyPng(await download(page, "Export version 1 PNG"), 1);
     await verifyJson(await download(page, "Export version 1 JSON"), 1);
     await verifyBrowserTokenBoundary(page);
-    await page.getByRole("button", { name: "Delete uploaded source and reset" }).click();
+    await page.getByRole("button", { name: "Review source deletion" }).click();
+    await page.getByRole("button", { name: "Confirm delete source and reset" }).click();
     await expect(page.getByText("Only the uploaded source asset was deleted")).toBeVisible();
     await expect(page.getByRole("button", { name: "Upload and start" })).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Version 1" })).toHaveCount(0);
@@ -167,6 +175,7 @@ test("bounded capability, conflict, retryable, final, and export failures stay d
   await page.route("**/api/v1/runs/*/brand-lock/confirm", async (route) => {
     await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ detail: { code: "locked_field_changed" } }) });
   });
+  await page.getByLabel(/become immutable/i).check();
   await page.getByRole("button", { name: "Confirm Brand Lock" }).click();
   await expect(page.getByText("Unable to confirm Brand Lock.")).toBeVisible();
   await expect(page.getByText(/locked_field_changed/)).toBeVisible();
@@ -180,6 +189,50 @@ test("bounded capability, conflict, retryable, final, and export failures stay d
   await page.getByRole("button", { name: "Export version 1 PNG" }).click();
   await expect(page.getByText(/Studio operation failed \(composition_artifact_unavailable\)/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Retry version 2/ })).toHaveCount(0);
+});
+
+test("guided workflow stays accessible by keyboard and at responsive preferences", async ({ page }) => {
+  await page.goto("/studio");
+  await expectNoSeriousAxeViolations(page);
+  await page.getByLabel("Source ad").setInputFiles({
+    name: "unsupported.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("not an image"),
+  });
+  await expectNoSeriousAxeViolations(page);
+
+  await configure(page, "China to UK");
+  await expect(page.getByRole("heading", { name: "Analysis evidence" })).toBeFocused();
+  await expectNoSeriousAxeViolations(page);
+  await page.getByLabel(/become immutable/i).focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("button", { name: "Confirm Brand Lock" }).press("Enter");
+  await page.getByRole("button", { name: "Generate fixture proposal" }).press("Enter");
+  await expect(page.getByRole("heading", { name: "Version 1" })).toBeFocused();
+  await expectNoSeriousAxeViolations(page);
+  await page.getByLabel("Shorten headline").check();
+  await page.getByLabel("Feedback context").fill("Use the allowed shortening only.");
+  await page.getByRole("button", { name: "Create version 2" }).click();
+  await expect(page.getByRole("heading", { name: "Compare versions" })).toBeFocused();
+  await expectNoSeriousAxeViolations(page);
+  await page.getByRole("button", { name: "Review source deletion" }).click();
+  await page.getByRole("button", { name: "Cancel deletion" }).click();
+  await expect(page.getByRole("button", { name: "Review source deletion" })).toBeFocused();
+
+  for (const settings of [
+    { viewport: { width: 375, height: 812 }, scale: "100%" },
+    { viewport: { width: 1280, height: 800 }, scale: "200%" },
+  ]) {
+    await page.setViewportSize(settings.viewport);
+    await page.evaluate((scale) => { document.documentElement.style.fontSize = scale; }, settings.scale);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expectNoSeriousAxeViolations(page);
+  await page.getByRole("button", { name: "Review source deletion" }).click();
+  await page.getByRole("button", { name: "Confirm delete source and reset" }).click();
+  await expect(page.getByText(/Only the uploaded source asset was deleted/)).toBeVisible();
+  await expectNoSeriousAxeViolations(page);
 });
 
 test("retry is visible only for server-authorized revision failure", async ({ page }) => {
