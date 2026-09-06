@@ -9,7 +9,7 @@ def test_vercel_routes_one_public_surface_to_frontend_and_fastapi() -> None:
 
     assert configuration["services"]["frontend"]["root"] == "apps/web"
     assert configuration["services"]["api"]["root"] == "."
-    assert configuration["services"]["api"]["entrypoint"] == "cultureshift.app:app"
+    assert configuration["services"]["api"]["entrypoint"] == "src/cultureshift/app:app"
     assert configuration["rewrites"] == [
         {"source": "/api/(.*)", "destination": {"service": "api"}},
         {"source": "/(.*)", "destination": {"service": "frontend"}},
