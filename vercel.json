@@ -6,7 +6,7 @@
     },
     "api": {
       "root": ".",
-      "entrypoint": "src/cultureshift/app:app"
+      "entrypoint": "src.cultureshift.app:app"
     }
   },
   "rewrites": [
