@@ -134,6 +134,7 @@ class SQLiteProjectRunRepository:
 
     def __init__(self, database: str | Path) -> None:
         self._database = Path(database)
+        self._integrity_error = sqlite3.IntegrityError
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -187,8 +188,7 @@ class SQLiteProjectRunRepository:
                 """
             )
             columns = {
-                row["name"]
-                for row in connection.execute("PRAGMA table_info(project_run_contexts)")
+                row["name"] for row in connection.execute("PRAGMA table_info(project_run_contexts)")
             }
             if "repair_attempted" not in columns:
                 connection.execute(
@@ -340,7 +340,7 @@ class SQLiteProjectRunRepository:
                         """,
                         (str(run.id), request.model_dump_json()),
                     )
-        except sqlite3.IntegrityError as error:
+        except self._integrity_error as error:
             raise DuplicateProjectRunError(str(run.id)) from error
         return run
 
@@ -447,9 +447,7 @@ class SQLiteProjectRunRepository:
             requested_changes=tuple(RevisionChange(value) for value in changes),
             feedback_digest=row["feedback_digest"],
             retry_condition=(
-                None
-                if row["retry_condition"] is None
-                else RetryCondition(row["retry_condition"])
+                None if row["retry_condition"] is None else RetryCondition(row["retry_condition"])
             ),
             retry_action=(
                 None if row["retry_action"] is None else RetryAction(row["retry_action"])
@@ -470,8 +468,7 @@ class SQLiteProjectRunRepository:
             run_id=UUID(row["run_id"]),
             result_version=row["result_version"],
             requested_changes=tuple(
-                RevisionChange(value)
-                for value in json.loads(row["requested_changes_json"])
+                RevisionChange(value) for value in json.loads(row["requested_changes_json"])
             ),
             feedback_digest=row["feedback_digest"],
             draft=DraftRecord(
@@ -761,7 +758,7 @@ class SQLiteProjectRunRepository:
                         revision.revised_at.isoformat(),
                     ),
                 )
-            except sqlite3.IntegrityError as error:
+            except self._integrity_error as error:
                 raise RevisionLimitReachedError("one revision already exists") from error
             context = connection.execute(
                 """
@@ -1192,10 +1189,7 @@ class SQLiteProjectRunRepository:
         confirmed_at: datetime | None = None,
     ) -> BrandLockConfirmationRecord:
         confirmation_time = confirmed_at or utc_now()
-        if (
-            confirmation_time.tzinfo is None
-            or confirmation_time.utcoffset() != timedelta(0)
-        ):
+        if confirmation_time.tzinfo is None or confirmation_time.utcoffset() != timedelta(0):
             raise ValueError("confirmed_at must use UTC")
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")

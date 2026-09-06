@@ -3,35 +3,25 @@ import { describe, expect, it } from "vitest";
 
 import Home from "./page";
 
-describe("CultureShift foundation page", () => {
-  it("renders both static fixtures for human review", () => {
-    const { container } = render(<Home />);
+describe("CultureShift product landing page", () => {
+  it("introduces the product and provides clear paths into the case study and demo", () => {
+    render(<Home />);
 
+    expect(screen.getByRole("heading", { level: 1, name: "CultureShift" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "CultureShift bilateral fixture lab" }),
+      screen.getByText("Human-in-the-Loop Cross-Cultural Creative Reasoning System"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "China to UK" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "UK to China" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(2);
-    expect(screen.getByRole("article", { name: /China to UK/ })).toBeInTheDocument();
-    expect(screen.getByRole("article", { name: /UK to China/ })).toBeInTheDocument();
-    expect(screen.getAllByText("Fixture Demo / 非实时模型")).toHaveLength(2);
-    expect(screen.getAllByText("Human review required")).toHaveLength(2);
-    expect(
-      screen.getByRole("link", { name: "Open connected Studio" }),
-    ).toHaveAttribute("href", "/studio");
-
-    expect(
-      container.querySelectorAll(
-        'button, input[type="file"], form, [contenteditable]:not([contenteditable="false"])',
-      ),
-    ).toHaveLength(0);
-    expect(container.textContent).not.toMatch(
-      /live[ -]?model|performance[ -]?uplift|approval|approved (?:for|by|as)/i,
+    expect(screen.getByRole("link", { name: "Start adapting" })).toHaveAttribute(
+      "href",
+      "/studio",
+    );
+    expect(screen.getByRole("link", { name: "Enter Studio" })).toHaveAttribute(
+      "href",
+      "/studio",
+    );
+    expect(screen.getByAltText("Orbit AI localized creative proposal")).toHaveAttribute(
+      "src",
+      expect.stringContaining("composed-china-to-uk.png"),
     );
   });
 });

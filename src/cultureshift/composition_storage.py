@@ -9,6 +9,8 @@ from pathlib import Path
 from threading import Lock
 from uuid import UUID
 
+from cultureshift.cloud_storage import ObjectNotFoundError, ObjectStorageError, ObjectStore
+
 
 class CompositionArtifactError(RuntimeError):
     pass
@@ -126,9 +128,7 @@ class CompositionArtifactStore:
             raise CompositionArtifactError("composition artifact unavailable")
         return LoadedCompositionArtifact(record, content)
 
-    def load(
-        self, artifact_id: UUID, *, now: datetime | None = None
-    ) -> LoadedCompositionArtifact:
+    def load(self, artifact_id: UUID, *, now: datetime | None = None) -> LoadedCompositionArtifact:
         checked_at = self._require_utc(now or datetime.now(UTC))
         with self._lock:
             return self._load_unlocked(artifact_id, now=checked_at, check_expiry=True)
@@ -141,3 +141,93 @@ class CompositionArtifactStore:
                     path.unlink()
                     removed = True
         return removed
+
+
+class CloudCompositionArtifactStore:
+    def __init__(
+        self,
+        objects: ObjectStore,
+        prefix: str = "compositions/",
+        *,
+        max_bytes: int = 10 * 1024 * 1024,
+    ) -> None:
+        self._objects = objects
+        self._prefix = prefix.strip("/") + "/"
+        self._max_bytes = max_bytes
+
+    def _key(self, artifact_id: UUID, suffix: str) -> str:
+        return f"{self._prefix}{artifact_id}.{suffix}"
+
+    def save(
+        self, artifact_id: UUID, png_bytes: bytes, *, expires_at: datetime
+    ) -> StoredCompositionArtifact:
+        expiration = CompositionArtifactStore._require_utc(expires_at)
+        if not png_bytes.startswith(b"\x89PNG\r\n\x1a\n") or len(png_bytes) > self._max_bytes:
+            raise CompositionArtifactError("composition artifact unavailable")
+        digest = hashlib.sha256(png_bytes).hexdigest()
+        record = StoredCompositionArtifact(artifact_id, digest, len(png_bytes), expiration)
+        metadata = json.dumps(
+            {
+                "artifact_id": str(artifact_id),
+                "sha256": digest,
+                "size_bytes": len(png_bytes),
+                "expires_at": expiration.isoformat(),
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        try:
+            existing = self.load(artifact_id, now=datetime.now(UTC), check_expiry=False)
+            if existing.record == record and existing.png_bytes == png_bytes:
+                return record
+            raise CompositionArtifactError("composition artifact unavailable")
+        except CompositionArtifactError:
+            try:
+                self._objects.put(
+                    self._key(artifact_id, "png"),
+                    png_bytes,
+                    content_type="image/png",
+                    create_only=True,
+                )
+                self._objects.put(
+                    self._key(artifact_id, "json"),
+                    metadata,
+                    content_type="application/json",
+                    create_only=True,
+                )
+            except (ObjectStorageError, FileExistsError) as error:
+                raise CompositionArtifactError("composition artifact unavailable") from error
+        return record
+
+    def load(
+        self, artifact_id: UUID, *, now: datetime | None = None, check_expiry: bool = True
+    ) -> LoadedCompositionArtifact:
+        checked_at = CompositionArtifactStore._require_utc(now or datetime.now(UTC))
+        try:
+            metadata = json.loads(
+                self._objects.get(self._key(artifact_id, "json"), max_bytes=64 * 1024)
+            )
+            content = self._objects.get(self._key(artifact_id, "png"), max_bytes=self._max_bytes)
+            record = StoredCompositionArtifact(
+                UUID(metadata["artifact_id"]),
+                metadata["sha256"],
+                metadata["size_bytes"],
+                CompositionArtifactStore._require_utc(
+                    datetime.fromisoformat(metadata["expires_at"])
+                ),
+            )
+        except (ObjectNotFoundError, ObjectStorageError, KeyError, TypeError, ValueError) as error:
+            raise CompositionArtifactError("composition artifact unavailable") from error
+        if (
+            record.artifact_id != artifact_id
+            or record.size_bytes != len(content)
+            or hashlib.sha256(content).hexdigest() != record.sha256
+            or (check_expiry and record.expires_at <= checked_at)
+        ):
+            raise CompositionArtifactError("composition artifact unavailable")
+        return LoadedCompositionArtifact(record, content)
+
+    def delete(self, artifact_id: UUID) -> bool:
+        return bool(
+            self._objects.delete((self._key(artifact_id, "png"), self._key(artifact_id, "json")))
+        )

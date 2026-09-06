@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
+import Link from "next/link";
 import { useEffect, useReducer, useRef, useState } from "react";
 
 import { BrandLockForm } from "../../components/brand-lock-form";
@@ -311,15 +312,23 @@ export function StudioClient({ api = createStudioApiClient() }: StudioClientProp
 
   return (
     <main className={styles.shell} aria-busy={isBusy}>
+      <nav className={styles.productNav} aria-label="Product navigation">
+        <Link className={styles.productBrand} href="/" aria-label="CultureShift home">CultureShift<span>.</span></Link>
+        <div className={styles.navContext}><span className={styles.fixtureBadge}>Fixture mode</span><span>China ↔ UK</span></div>
+      </nav>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>Day 18 · accessible fixture demonstration</p>
-        <h1>Connected fixture Studio</h1>
-        <p>
-          CultureShift demonstrates how an authorized static ad can be localized between China and the UK while verified brand elements remain protected.
-        </p>
-        <ul className={styles.boundaries}>
-          <li>This is a fixture demonstration with no live AI provider.</li><li>Only China to UK and UK to China are supported.</li><li>Brand Lock protects verified brand elements from later changes.</li><li>Cultural recommendations are hypotheses requiring human review, not cultural approval.</li><li>You can compare the source, immutable Version 1, and at most one structured Version 2.</li>
-        </ul>
+        <div>
+          <p className={styles.eyebrow}>Cross-cultural creative workspace</p>
+          <h1>Create a localized ad</h1>
+          <p>Adapt an authorized AI-product creative between China and the UK while keeping verified brand truth protected.</p>
+        </div>
+        <aside className={styles.demoNotice} aria-label="Fixture demonstration boundaries">
+          <strong><span /> Fixture mode</strong>
+          <p>Deterministic product demonstration. No live AI provider or automated cultural approval.</p>
+          <details><summary>View product boundaries</summary><ul className={styles.boundaries}>
+            <li>China to UK and UK to China only.</li><li>Brand Lock protects verified elements.</li><li>Cultural recommendations remain hypotheses requiring human review.</li><li>One structured revision is available.</li>
+          </ul></details>
+        </aside>
       </header>
       <section className={styles.progress} aria-labelledby="studio-progress-heading">
         <h2 id="studio-progress-heading">Studio progress</h2>

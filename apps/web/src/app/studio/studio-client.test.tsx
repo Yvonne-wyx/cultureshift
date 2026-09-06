@@ -174,7 +174,8 @@ describe("StudioClient", () => {
   it("requires an authorized supported source before upload", () => {
     render(<StudioClient api={fakeApi()} />);
 
-    expect(screen.getByRole("heading", { name: "Connected fixture Studio" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Create a localized ad" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "CultureShift home" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("radio", { name: "China to UK" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "UK to China" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Upload and start" })).toBeDisabled();
@@ -186,9 +187,10 @@ describe("StudioClient", () => {
 
   it("orients a first-time user and exposes a non-navigable accessible progress list", () => {
     render(<StudioClient api={fakeApi()} />);
-    expect(screen.getByText(/This is a fixture demonstration/i)).toBeVisible();
+    expect(screen.getAllByText(/Fixture mode/i)).toHaveLength(2);
     expect(screen.getByText(/no live AI provider/i)).toBeVisible();
-    expect(screen.getByText(/hypotheses requiring human review/i)).toBeVisible();
+    expect(screen.getByText("View product boundaries")).toBeVisible();
+    expect(screen.getByText(/hypotheses requiring human review/i)).toBeInTheDocument();
     const progress = screen.getByRole("list", { name: "Studio progress" });
     expect(progress).toHaveTextContent("Configure direction");
     expect(progress).toHaveTextContent("Export or delete");

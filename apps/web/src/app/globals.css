@@ -22,7 +22,7 @@ body {
   flex-direction: column;
   color: var(--page-foreground);
   background: var(--page-background);
-  font-family: Arial, Helvetica, "Noto Sans SC", sans-serif;
+  font-family: Calibri, Carlito, Arial, "Noto Sans SC", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

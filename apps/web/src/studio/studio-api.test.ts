@@ -33,6 +33,19 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 describe("StudioApiClient", () => {
+  it("uses the same-origin API route when no deployment override is configured", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(uploaded, 201));
+    const api = createStudioApiClient(undefined, fetchMock);
+    const file = new File(["fixture-png"], "source.png", { type: "image/png" });
+
+    await api.uploadAsset(file, {
+      provenanceRef: "fixture://day16/source",
+      rightsRef: "rights://authorized/day16",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/assets");
+  });
+
   it("uploads raw bytes with public metadata and no capability URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(uploaded, 201));
     const api = createStudioApiClient("http://127.0.0.1:8000", fetchMock);

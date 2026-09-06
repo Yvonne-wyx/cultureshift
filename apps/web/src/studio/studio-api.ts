@@ -174,8 +174,7 @@ async function toApiError(response: Response): Promise<StudioApiError> {
 }
 
 export function createStudioApiClient(
-  configuredBaseUrl =
-    process.env.NEXT_PUBLIC_CULTURESHIFT_API_URL ?? "http://127.0.0.1:8000",
+  configuredBaseUrl = process.env.NEXT_PUBLIC_CULTURESHIFT_API_URL ?? "",
   fetchImpl: FetchLike = fetch,
 ): StudioApiClient {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");

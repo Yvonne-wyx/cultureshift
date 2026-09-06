@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter, ValidationError
 
+from cultureshift.cloud_storage import ObjectNotFoundError, ObjectStorageError, ObjectStore
 from cultureshift.contracts import AssetKind, PublicReference, SourceAdAssetRef
 
 MAX_ASSET_BYTES = 10 * 1024 * 1024
@@ -265,9 +266,9 @@ class TemporaryAssetStore:
                 try:
                     self._write_exclusive(
                         part,
-                        (
-                            json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
-                        ).encode("utf-8"),
+                        (json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n").encode(
+                            "utf-8"
+                        ),
                     )
                     os.replace(part, tombstone)
                 except OSError as error:
@@ -305,3 +306,147 @@ class TemporaryAssetStore:
             except (OSError, KeyError, ValueError, json.JSONDecodeError):
                 continue
         return removed
+
+
+class CloudAssetStore:
+    """Purpose-limited source assets in a private object-store prefix."""
+
+    def __init__(self, objects: ObjectStore, prefix: str = "source-assets/") -> None:
+        self._objects = objects
+        self._prefix = prefix.strip("/") + "/"
+
+    def _key(self, asset_id: UUID, suffix: str) -> str:
+        return f"{self._prefix}{asset_id}.{suffix}"
+
+    def store(
+        self,
+        data: bytes,
+        *,
+        declared_media_type: str,
+        provenance_ref: str,
+        rights_ref: str,
+        now: datetime | None = None,
+        asset_id: UUID | None = None,
+    ) -> StoredAsset:
+        if declared_media_type not in _EXTENSIONS:
+            raise UnsupportedAssetTypeError("unsupported asset type")
+        if not data:
+            raise AssetEmptyError("asset is empty")
+        if len(data) > MAX_ASSET_BYTES:
+            raise AssetTooLargeError("asset exceeds size limit")
+        detected = detect_media_type(data)
+        if detected != declared_media_type:
+            raise AssetTypeMismatchError("declared and detected asset types differ")
+        try:
+            safe_provenance = _PUBLIC_REFERENCE.validate_python(provenance_ref)
+            safe_rights = _PUBLIC_REFERENCE.validate_python(rights_ref)
+        except ValidationError as error:
+            raise AssetMetadataError("invalid asset metadata") from error
+        created_at = _require_utc(now or datetime.now(UTC))
+        identifier = asset_id or uuid4()
+        stored = StoredAsset(
+            asset=SourceAdAssetRef(
+                asset_id=identifier,
+                kind=AssetKind.SOURCE_AD,
+                media_type=detected,
+                sha256=hashlib.sha256(data).hexdigest(),
+                provenance_ref=safe_provenance,
+                rights_ref=safe_rights,
+                expires_at=created_at + ASSET_TTL,
+            ),
+            size_bytes=len(data),
+            created_at=created_at,
+        )
+        metadata = json.dumps(
+            {
+                "asset": stored.asset.model_dump(mode="json"),
+                "created_at": created_at.isoformat(),
+                "size_bytes": len(data),
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        extension = _EXTENSIONS[detected]
+        try:
+            self._objects.get(self._key(identifier, "deleted.json"), max_bytes=MAX_METADATA_BYTES)
+            raise AssetLifecycleClosedError("asset lifecycle is closed")
+        except ObjectNotFoundError:
+            pass
+        try:
+            self._objects.put(
+                self._key(identifier, extension), data, content_type=detected, create_only=True
+            )
+            self._objects.put(
+                self._key(identifier, "meta.json"),
+                metadata,
+                content_type="application/json",
+                create_only=True,
+            )
+        except (ObjectStorageError, FileExistsError) as error:
+            self._objects.delete(
+                (self._key(identifier, extension), self._key(identifier, "meta.json"))
+            )
+            raise AssetStorageError("temporary asset write failed") from error
+        return stored
+
+    def load(self, asset_id: UUID, *, now: datetime | None = None) -> LoadedAsset:
+        loaded_at = _require_utc(now or datetime.now(UTC))
+        try:
+            self._objects.get(self._key(asset_id, "deleted.json"), max_bytes=MAX_METADATA_BYTES)
+            raise AssetLifecycleClosedError("asset lifecycle is closed")
+        except ObjectNotFoundError:
+            pass
+        try:
+            metadata = json.loads(
+                self._objects.get(self._key(asset_id, "meta.json"), max_bytes=MAX_METADATA_BYTES)
+            )
+            asset = SourceAdAssetRef.model_validate(metadata["asset"])
+            created_at = _require_utc(datetime.fromisoformat(metadata["created_at"]))
+            size_bytes = metadata["size_bytes"]
+            if (
+                asset.asset_id != asset_id
+                or created_at > loaded_at
+                or asset.expires_at <= loaded_at
+            ):
+                raise AssetLifecycleClosedError("asset lifecycle is closed")
+            content = self._objects.get(
+                self._key(asset_id, _EXTENSIONS[asset.media_type]), max_bytes=MAX_ASSET_BYTES
+            )
+        except AssetLifecycleClosedError:
+            raise
+        except (ObjectStorageError, KeyError, TypeError, ValueError, ValidationError) as error:
+            raise AssetStorageError("temporary asset read failed") from error
+        if len(content) != size_bytes or hashlib.sha256(content).hexdigest() != asset.sha256:
+            raise AssetStorageError("temporary asset integrity check failed")
+        return LoadedAsset(asset, content)
+
+    def delete(
+        self, asset_id: UUID, *, now: datetime | None = None, reason: str = "deleted"
+    ) -> bool:
+        deleted_at = _require_utc(now or datetime.now(UTC))
+        metadata_key = self._key(asset_id, "meta.json")
+        existed = True
+        try:
+            metadata = json.loads(self._objects.get(metadata_key, max_bytes=MAX_METADATA_BYTES))
+            extension = _EXTENSIONS[metadata["asset"]["media_type"]]
+        except (ObjectNotFoundError, ObjectStorageError, KeyError, TypeError, ValueError):
+            existed, extension = False, "png"
+        tombstone = json.dumps({"deleted_at": deleted_at.isoformat(), "reason": reason}).encode()
+        try:
+            self._objects.put(
+                self._key(asset_id, "deleted.json"),
+                tombstone,
+                content_type="application/json",
+                create_only=False,
+            )
+            self._objects.delete(
+                (metadata_key, self._key(asset_id, extension), self._key(asset_id, "jpg"))
+            )
+        except ObjectStorageError as error:
+            raise AssetStorageError("asset deletion failed") from error
+        return existed
+
+    def purge_expired(self, now: datetime | None = None) -> int:
+        # Serverless cleanup is performed by an authenticated scheduled operation.
+        _require_utc(now or datetime.now(UTC))
+        return 0

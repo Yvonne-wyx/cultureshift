@@ -31,6 +31,7 @@ from cultureshift.asset_storage import (
     AssetStorageError,
     AssetTooLargeError,
     AssetTypeMismatchError,
+    CloudAssetStore,
     TemporaryAssetStore,
     UnsupportedAssetTypeError,
 )
@@ -40,6 +41,7 @@ from cultureshift.capability_tokens import (
     CapabilityTokenError,
     CapabilityTokenService,
 )
+from cultureshift.cloud_storage import SupabaseObjectStore
 from cultureshift.composition import PillowCompositor
 from cultureshift.composition_export import (
     CompositionExportError,
@@ -51,7 +53,10 @@ from cultureshift.composition_service import (
     CompositionServiceError,
     CompositionServiceErrorCode,
 )
-from cultureshift.composition_storage import CompositionArtifactStore
+from cultureshift.composition_storage import (
+    CloudCompositionArtifactStore,
+    CompositionArtifactStore,
+)
 from cultureshift.contracts import (
     AnalysisCompleted,
     AssetUploaded,
@@ -78,6 +83,7 @@ from cultureshift.draft_generation import (
 )
 from cultureshift.fixture_assets import FixtureAssetRegistry
 from cultureshift.image_provider import FixtureImageProvider
+from cultureshift.postgres_repository import PostgresProjectRunRepository
 from cultureshift.rate_limits import FixedWindowRateLimiter
 from cultureshift.repository import (
     BrandLockImmutableError,
@@ -104,10 +110,7 @@ def _cors_origins_from_environment() -> tuple[str, ...]:
     configured = os.environ.get("CULTURESHIFT_STUDIO_ORIGINS", "")
     origins = tuple(value.strip() for value in configured.split(",") if value.strip())
     selected = tuple(dict.fromkeys(origins or DEFAULT_STUDIO_ORIGINS))
-    if any(
-        origin == "*" or not origin.startswith(("http://", "https://"))
-        for origin in selected
-    ):
+    if any(origin == "*" or not origin.startswith(("http://", "https://")) for origin in selected):
         raise RuntimeError("CULTURESHIFT_STUDIO_ORIGINS must contain exact origins")
     return selected
 
@@ -122,18 +125,46 @@ def _capability_service_from_environment() -> CapabilityTokenService:
     return CapabilityTokenService(secret=secret, audience="cultureshift-api")
 
 
-def _asset_store_from_environment() -> TemporaryAssetStore:
+def _repository_from_environment() -> SQLiteProjectRunRepository | PostgresProjectRunRepository:
+    database_url = os.environ.get("CULTURESHIFT_DATABASE_URL", "").strip()
+    if database_url:
+        return PostgresProjectRunRepository(database_url)
+    if os.environ.get("VERCEL"):
+        raise RuntimeError("CULTURESHIFT_DATABASE_URL is required on Vercel")
+    return SQLiteProjectRunRepository(
+        Path(os.environ.get("CULTURESHIFT_SQLITE_PATH", ".cultureshift/runs.sqlite3"))
+    )
+
+
+def _stores_from_environment() -> tuple[
+    TemporaryAssetStore | CloudAssetStore,
+    CompositionArtifactStore | CloudCompositionArtifactStore,
+]:
+    storage_url = os.environ.get("CULTURESHIFT_OBJECT_STORAGE_URL", "").strip()
+    storage_key = os.environ.get("CULTURESHIFT_OBJECT_STORAGE_KEY", "").strip()
+    if storage_url or storage_key:
+        if not storage_url or not storage_key:
+            raise RuntimeError("object storage configuration is incomplete")
+        objects = SupabaseObjectStore(
+            storage_url,
+            storage_key,
+            os.environ.get("CULTURESHIFT_OBJECT_STORAGE_BUCKET", "cultureshift-private"),
+        )
+        return CloudAssetStore(objects), CloudCompositionArtifactStore(objects)
     configured = os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", "")
     if not configured.strip():
         raise RuntimeError("CULTURESHIFT_TEMP_ASSET_DIR is required")
-    return TemporaryAssetStore(configured)
+    temporary_root = Path(configured)
+    return TemporaryAssetStore(temporary_root), CompositionArtifactStore(
+        temporary_root / "compositions"
+    )
 
 
 def create_app(
     *,
-    repository: SQLiteProjectRunRepository | None = None,
+    repository: SQLiteProjectRunRepository | PostgresProjectRunRepository | None = None,
     token_service: CapabilityTokenService | None = None,
-    asset_store: TemporaryAssetStore | None = None,
+    asset_store: TemporaryAssetStore | CloudAssetStore | None = None,
     upload_rate_limiter: FixedWindowRateLimiter | None = None,
     analysis_provider: VisionProvider | None = None,
     draft_generator: DraftGenerator | None = None,
@@ -142,16 +173,23 @@ def create_app(
     critic: Critic | None = None,
     revision_service: RevisionService | None = None,
 ) -> FastAPI:
-    runs = repository or SQLiteProjectRunRepository(Path(".cultureshift/runs.sqlite3"))
+    runs = repository or _repository_from_environment()
     tokens = token_service or _capability_service_from_environment()
-    assets = asset_store or _asset_store_from_environment()
+    configured_assets: TemporaryAssetStore | CloudAssetStore
+    configured_compositions: CompositionArtifactStore | CloudCompositionArtifactStore
+    if asset_store is None or composition_service is None or composition_export_service is None:
+        configured_assets, configured_compositions = _stores_from_environment()
+    else:
+        configured_assets = asset_store
+        temporary_root = Path(os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", ".cultureshift/assets"))
+        configured_compositions = CompositionArtifactStore(temporary_root / "compositions")
+    assets = asset_store or configured_assets
     upload_limit = upload_rate_limiter or FixedWindowRateLimiter(
         limit=10, window=timedelta(minutes=1)
     )
     provider = analysis_provider or FixtureProvider()
     drafts = draft_generator or DraftGenerator(FixtureCopywriter())
-    temporary_root = Path(os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", ".cultureshift/assets"))
-    composition_store = CompositionArtifactStore(temporary_root / "compositions")
+    composition_store = configured_compositions
     compositions = composition_service or CompositionService(
         runs,
         FixtureImageProvider(),
@@ -171,10 +209,7 @@ def create_app(
         FixtureAssetRegistry(),
         PillowCompositor(),
         composition_store,
-        Path(__file__).resolve().parents[2]
-        / "assets"
-        / "fonts"
-        / "NotoSansCJKsc-Regular.otf",
+        Path(__file__).resolve().parents[2] / "assets" / "fonts" / "NotoSansCJKsc-Regular.otf",
         reviews,
     )
 
@@ -491,9 +526,7 @@ def create_app(
                 AnalysisErrorCode.UNSAFE_HYPOTHESIS,
             }
             failed_status = (
-                ProjectRunStatus.BLOCKED
-                if error.code in blocked_codes
-                else ProjectRunStatus.FAILED
+                ProjectRunStatus.BLOCKED if error.code in blocked_codes else ProjectRunStatus.FAILED
             )
             runs.record_failure(run_id, failed_status, error.code.value)
             status_code = (
@@ -783,10 +816,7 @@ def create_app(
                 confirmation = runs.get_confirmed_brand_lock(run_id)
                 draft = runs.get_draft(run_id)
                 composition = runs.get_composition(run_id)
-                if any(
-                    value is None
-                    for value in (analysis, confirmation, draft, composition)
-                ):
+                if any(value is None for value in (analysis, confirmation, draft, composition)):
                     raise InvalidRunStateError("review prerequisites are incomplete")
                 report = reviews.review(
                     CriticRequest(
@@ -952,9 +982,7 @@ def create_app(
             content=exported.png_bytes,
             media_type="image/png",
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="cultureshift-{run_id}.png"'
-                ),
+                "Content-Disposition": (f'attachment; filename="cultureshift-{run_id}.png"'),
                 "X-Content-Type-Options": "nosniff",
             },
         )
@@ -972,9 +1000,7 @@ def create_app(
             content=encoded,
             media_type="application/json",
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="cultureshift-{run_id}.json"'
-                ),
+                "Content-Disposition": (f'attachment; filename="cultureshift-{run_id}.json"'),
                 "X-Content-Type-Options": "nosniff",
             },
         )

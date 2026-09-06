@@ -48,6 +48,7 @@ private/
 evidence/
 .superpowers/
 .worktrees/
+/work/
 
 # Editors and operating systems
 .idea/
