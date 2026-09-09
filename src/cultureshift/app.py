@@ -125,11 +125,18 @@ def _capability_service_from_environment() -> CapabilityTokenService:
     return CapabilityTokenService(secret=secret, audience="cultureshift-api")
 
 
+def _environment_value(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1].strip()
+        if value:
+            return value
+    return ""
+
+
 def _repository_from_environment() -> SQLiteProjectRunRepository | PostgresProjectRunRepository:
-    database_url = (
-        os.environ.get("CULTURESHIFT_DATABASE_URL", "").strip()
-        or os.environ.get("POSTGRES_URL", "").strip()
-    )
+    database_url = _environment_value("CULTURESHIFT_DATABASE_URL", "POSTGRES_URL")
     if database_url:
         return PostgresProjectRunRepository(database_url)
     if os.environ.get("VERCEL"):
@@ -143,14 +150,13 @@ def _stores_from_environment() -> tuple[
     TemporaryAssetStore | CloudAssetStore,
     CompositionArtifactStore | CloudCompositionArtifactStore,
 ]:
-    storage_url = (
-        os.environ.get("CULTURESHIFT_OBJECT_STORAGE_URL", "").strip()
-        or os.environ.get("SUPABASE_URL", "").strip()
+    storage_url = _environment_value(
+        "CULTURESHIFT_OBJECT_STORAGE_URL", "SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"
     )
-    storage_key = (
-        os.environ.get("CULTURESHIFT_OBJECT_STORAGE_KEY", "").strip()
-        or os.environ.get("SUPABASE_SECRET_KEY", "").strip()
-        or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    storage_key = _environment_value(
+        "CULTURESHIFT_OBJECT_STORAGE_KEY",
+        "SUPABASE_SECRET_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
     )
     if storage_url or storage_key:
         if not storage_url or not storage_key:
