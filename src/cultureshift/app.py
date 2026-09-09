@@ -126,11 +126,14 @@ def _capability_service_from_environment() -> CapabilityTokenService:
 
 
 def _repository_from_environment() -> SQLiteProjectRunRepository | PostgresProjectRunRepository:
-    database_url = os.environ.get("CULTURESHIFT_DATABASE_URL", "").strip()
+    database_url = (
+        os.environ.get("CULTURESHIFT_DATABASE_URL", "").strip()
+        or os.environ.get("POSTGRES_URL", "").strip()
+    )
     if database_url:
         return PostgresProjectRunRepository(database_url)
     if os.environ.get("VERCEL"):
-        raise RuntimeError("CULTURESHIFT_DATABASE_URL is required on Vercel")
+        raise RuntimeError("CULTURESHIFT_DATABASE_URL or POSTGRES_URL is required on Vercel")
     return SQLiteProjectRunRepository(
         Path(os.environ.get("CULTURESHIFT_SQLITE_PATH", ".cultureshift/runs.sqlite3"))
     )
@@ -140,8 +143,15 @@ def _stores_from_environment() -> tuple[
     TemporaryAssetStore | CloudAssetStore,
     CompositionArtifactStore | CloudCompositionArtifactStore,
 ]:
-    storage_url = os.environ.get("CULTURESHIFT_OBJECT_STORAGE_URL", "").strip()
-    storage_key = os.environ.get("CULTURESHIFT_OBJECT_STORAGE_KEY", "").strip()
+    storage_url = (
+        os.environ.get("CULTURESHIFT_OBJECT_STORAGE_URL", "").strip()
+        or os.environ.get("SUPABASE_URL", "").strip()
+    )
+    storage_key = (
+        os.environ.get("CULTURESHIFT_OBJECT_STORAGE_KEY", "").strip()
+        or os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+        or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    )
     if storage_url or storage_key:
         if not storage_url or not storage_key:
             raise RuntimeError("object storage configuration is incomplete")

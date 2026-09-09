@@ -79,6 +79,20 @@ def test_production_storage_configuration_fails_closed_when_incomplete(monkeypat
     monkeypatch.delenv("CULTURESHIFT_TEMP_ASSET_DIR", raising=False)
     monkeypatch.setenv("CULTURESHIFT_OBJECT_STORAGE_URL", "https://example.supabase.co")
     monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="object storage configuration is incomplete"):
         _stores_from_environment()
+
+
+def test_storage_accepts_vercel_supabase_environment(monkeypatch) -> None:
+    monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_URL", raising=False)
+    monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key")
+
+    asset_store, composition_store = _stores_from_environment()
+
+    assert isinstance(asset_store, CloudAssetStore)
+    assert isinstance(composition_store, CloudCompositionArtifactStore)
