@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -135,8 +136,19 @@ def _environment_value(*names: str) -> str:
     return ""
 
 
+def _postgres_database_url() -> str:
+    value = _environment_value("CULTURESHIFT_DATABASE_URL", "POSTGRES_URL")
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    query = urlencode(
+        [(key, item) for key, item in parse_qsl(parsed.query) if key.casefold() != "supa"]
+    )
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+
+
 def _repository_from_environment() -> SQLiteProjectRunRepository | PostgresProjectRunRepository:
-    database_url = _environment_value("CULTURESHIFT_DATABASE_URL", "POSTGRES_URL")
+    database_url = _postgres_database_url()
     if database_url:
         return PostgresProjectRunRepository(database_url)
     if os.environ.get("VERCEL"):

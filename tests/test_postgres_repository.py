@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from cultureshift.app import _repository_from_environment
+from cultureshift.app import _postgres_database_url, _repository_from_environment
 from cultureshift.postgres_repository import _postgres_sql
 from cultureshift.repository import SQLiteProjectRunRepository
 
@@ -47,3 +47,15 @@ def test_vercel_accepts_supabase_postgres_url(monkeypatch) -> None:
     repository = _repository_from_environment()
 
     assert repository._database_url == "postgresql://user:password@localhost/database"
+
+
+def test_vercel_supabase_metadata_is_removed_from_postgres_url(monkeypatch) -> None:
+    monkeypatch.delenv("CULTURESHIFT_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "POSTGRES_URL",
+        "postgresql://user:password@localhost/database?sslmode=require&supa=base-pooler.x",
+    )
+
+    assert _postgres_database_url() == (
+        "postgresql://user:password@localhost/database?sslmode=require"
+    )
