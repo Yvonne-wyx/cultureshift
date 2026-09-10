@@ -108,3 +108,14 @@ def test_storage_normalizes_platform_wrapped_supabase_url(monkeypatch) -> None:
 
     assert isinstance(asset_store, CloudAssetStore)
     assert isinstance(composition_store, CloudCompositionArtifactStore)
+
+
+def test_storage_uses_private_bucket_when_optional_variable_is_blank(monkeypatch) -> None:
+    monkeypatch.setenv("CULTURESHIFT_OBJECT_STORAGE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("CULTURESHIFT_OBJECT_STORAGE_KEY", "service-role-key")
+    monkeypatch.setenv("CULTURESHIFT_OBJECT_STORAGE_BUCKET", "")
+
+    asset_store, composition_store = _stores_from_environment()
+
+    assert isinstance(asset_store, CloudAssetStore)
+    assert isinstance(composition_store, CloudCompositionArtifactStore)

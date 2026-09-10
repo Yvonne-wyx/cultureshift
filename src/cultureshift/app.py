@@ -164,7 +164,8 @@ def _stores_from_environment() -> tuple[
         objects = SupabaseObjectStore(
             storage_url,
             storage_key,
-            os.environ.get("CULTURESHIFT_OBJECT_STORAGE_BUCKET", "cultureshift-private"),
+            _environment_value("CULTURESHIFT_OBJECT_STORAGE_BUCKET")
+            or "cultureshift-private",
         )
         return CloudAssetStore(objects), CloudCompositionArtifactStore(objects)
     configured = os.environ.get("CULTURESHIFT_TEMP_ASSET_DIR", "")
