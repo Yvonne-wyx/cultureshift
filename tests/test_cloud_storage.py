@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
+from urllib.error import HTTPError
 from uuid import uuid4
 
 import pytest
 
 from cultureshift.app import _stores_from_environment
 from cultureshift.asset_storage import AssetLifecycleClosedError, CloudAssetStore
-from cultureshift.cloud_storage import ObjectNotFoundError
+from cultureshift.cloud_storage import ObjectNotFoundError, SupabaseObjectStore
 from cultureshift.composition_storage import (
     CloudCompositionArtifactStore,
     CompositionArtifactError,
@@ -40,6 +42,25 @@ class MemoryObjects:
 
     def list(self, prefix: str) -> tuple[str, ...]:
         return tuple(key for key in self.values if key.startswith(prefix))
+
+
+def test_supabase_get_maps_wrapped_not_found_response(monkeypatch) -> None:
+    def missing(*args, **kwargs):
+        raise HTTPError(
+            "https://example.supabase.co/storage/v1/object/bucket/missing",
+            400,
+            "Bad Request",
+            {},
+            BytesIO(b'{"statusCode":"404","error":"not_found"}'),
+        )
+
+    monkeypatch.setattr("cultureshift.cloud_storage.urlopen", missing)
+    objects = SupabaseObjectStore(
+        "https://example.supabase.co", "service-role-key", "cultureshift-private"
+    )
+
+    with pytest.raises(ObjectNotFoundError):
+        objects.get("missing", max_bytes=1024)
 
 
 def test_cloud_asset_store_preserves_integrity_expiry_and_deletion() -> None:

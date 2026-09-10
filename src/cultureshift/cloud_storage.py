@@ -60,8 +60,15 @@ class SupabaseObjectStore:
             with urlopen(request, timeout=15) as response:  # noqa: S310
                 content = response.read(max_bytes + 1)
         except HTTPError as error:
-            if not_found and error.code == 404:
-                raise ObjectNotFoundError("object unavailable") from None
+            if not_found:
+                try:
+                    detail = json.loads(error.read(64 * 1024))
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    detail = {}
+                reported_status = str(detail.get("statusCode", ""))
+                reported_error = str(detail.get("error", "")).casefold()
+                if error.code == 404 or reported_status == "404" or reported_error == "not_found":
+                    raise ObjectNotFoundError("object unavailable") from None
             raise ObjectStorageError("object storage request failed") from None
         except (OSError, URLError, TimeoutError):
             raise ObjectStorageError("object storage request failed") from None
