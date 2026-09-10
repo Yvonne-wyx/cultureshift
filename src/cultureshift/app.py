@@ -167,8 +167,8 @@ def _stores_from_environment() -> tuple[
     )
     storage_key = _environment_value(
         "CULTURESHIFT_OBJECT_STORAGE_KEY",
-        "SUPABASE_SECRET_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_SECRET_KEY",
     )
     if storage_url or storage_key:
         if not storage_url or not storage_key:

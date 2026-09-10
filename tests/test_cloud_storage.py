@@ -98,6 +98,18 @@ def test_storage_accepts_vercel_supabase_environment(monkeypatch) -> None:
     assert isinstance(composition_store, CloudCompositionArtifactStore)
 
 
+def test_storage_prefers_service_role_key_for_legacy_storage_api(monkeypatch) -> None:
+    monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_URL", raising=False)
+    monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "new-secret-key")
+
+    asset_store, _ = _stores_from_environment()
+
+    assert asset_store._objects._service_key == "service-role-key"
+
+
 def test_storage_normalizes_platform_wrapped_supabase_url(monkeypatch) -> None:
     monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_URL", raising=False)
     monkeypatch.delenv("CULTURESHIFT_OBJECT_STORAGE_KEY", raising=False)
